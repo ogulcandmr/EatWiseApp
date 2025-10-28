@@ -75,27 +75,30 @@ const GOAL_OPTIONS = [
 ] as const;
 
 const MEAL_TYPES = [
-  { value: 'breakfast', label: 'Kahvaltı', icon: 'sunny' },
-  { value: 'lunch', label: 'Öğle Yemeği', icon: 'restaurant' },
-  { value: 'dinner', label: 'Akşam Yemeği', icon: 'moon' },
-  { value: 'snacks', label: 'Ara Öğün', icon: 'cafe' },
+  { value: 'breakfast', label: 'Kahvaltı', icon: 'sunny', color: '#F39C12' },
+  { value: 'lunch', label: 'Öğle Yemeği', icon: 'restaurant', color: '#E74C3C' },
+  { value: 'dinner', label: 'Akşam Yemeği', icon: 'moon', color: '#8E44AD' },
 ] as const;
 
 export default function PlanEditScreen({ navigation, route }: Props) {
   const { isDark } = useTheme();
   const { user } = useAuth();
-  const { createPlan, updatePlan, generateAIPlan, loading, activePlan } = usePlans();
+  const { createPlan, updatePlan, generateAIPlan, loading, activePlan: currentActivePlan } = usePlans();
   
   // Global store
   const { 
-    currentPlan, 
+    currentPlan,
+    activePlan,
     createNewPlan, 
-    setCurrentPlan, 
+    setCurrentPlan,
+    setActivePlan,
     addRecipeToMeal, 
     updatePlanMeal, 
     removeMealFromPlan,
     clearCurrentPlan,
-    setEditingPlan 
+    setEditingPlan,
+    updateExistingPlan,
+    syncPlanToMeals
   } = useAppStore();
 
   const existingPlan = route.params?.plan;
@@ -182,6 +185,16 @@ export default function PlanEditScreen({ navigation, route }: Props) {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [isAutoFilling, setIsAutoFilling] = useState(false);
 
+  // Seçili öğün tipinin verilerini al
+  const selectedMealTypeData = MEAL_TYPES.find(type => type.value === selectedMealType);
+
+  // currentPlan değiştiğinde weeklyPlan'i senkronize et
+  useEffect(() => {
+    if (currentPlan?.weekly_plan) {
+      setWeeklyPlan(currentPlan.weekly_plan);
+    }
+  }, [currentPlan]);
+
   // Tarif verilerini işle
   useEffect(() => {
     const recipeData = route.params?.recipeData;
@@ -221,26 +234,49 @@ export default function PlanEditScreen({ navigation, route }: Props) {
           setSelectedDay(day as keyof DietPlan['weekly_plan']);
           setSelectedMealType(mealType as keyof DayPlan);
 
-          // Öğünü MealService ile Öğünler sayfasına da kaydet
+          // Öğünü MealService ile Öğünler sayfasına da kaydet (sadece bugünse)
           const user = await AuthService.getCurrentUser();
           if (user) {
-            // Öğün tipini MealService formatına çevir
-            const mealTypeMapping: Record<string, 'breakfast' | 'lunch' | 'dinner' | 'snack'> = {
-              breakfast: 'breakfast',
-              lunch: 'lunch', 
-              dinner: 'dinner',
-              snacks: 'snack'
+            // Sadece bugünün planına eklenen öğünleri meals tablosuna ekle
+            const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long' }).toLowerCase();
+            const dayMap: { [key: string]: string } = {
+              'pazartesi': 'pazartesi',
+              'salı': 'sali',
+              'çarşamba': 'carsamba',
+              'perşembe': 'persembe',
+              'cuma': 'cuma',
+              'cumartesi': 'cumartesi',
+              'pazar': 'pazar'
             };
+            
+            if (dayMap[today] === day) {
+              // Duplicate kontrolü
+              const existingMeals = await MealService.getTodayMeals(user.id);
+              const isDuplicate = existingMeals.some(existingMeal => 
+                existingMeal.name === name && 
+                existingMeal.total_calories === calories
+              );
+              
+              if (!isDuplicate) {
+                // Öğün tipini MealService formatına çevir
+                const mealTypeMapping: Record<string, 'breakfast' | 'lunch' | 'dinner' | 'snack'> = {
+                  breakfast: 'breakfast',
+                  lunch: 'lunch', 
+                  dinner: 'dinner',
+                  snacks: 'snack'
+                };
 
-            await MealService.addMeal({
-              user_id: user.id,
-              name,
-              total_calories: calories,
-              total_protein: protein,
-              total_carbs: carbs,
-              total_fat: fat,
-              meal_type: mealTypeMapping[mealType] || 'lunch'
-            });
+                await MealService.addMeal({
+                  user_id: user.id,
+                  name,
+                  total_calories: calories,
+                  total_protein: protein,
+                  total_carbs: carbs,
+                  total_fat: fat,
+                  meal_type: mealTypeMapping[mealType] || 'lunch'
+                });
+              }
+            }
           }
 
           // Route params'ı temizle - custom navigation setParams desteklemiyor
@@ -331,26 +367,49 @@ export default function PlanEditScreen({ navigation, route }: Props) {
           setSelectedDay(targetDay);
           setSelectedMealType(targetMealType);
 
-          // Öğünü MealService ile Öğünler sayfasına da kaydet
+          // Öğünü MealService ile Öğünler sayfasına da kaydet (sadece bugünkü plan için)
           const user = await AuthService.getCurrentUser();
           if (user) {
-            // Öğün tipini MealService formatına çevir
-            const mealTypeMapping: Record<string, 'breakfast' | 'lunch' | 'dinner' | 'snack'> = {
-              breakfast: 'breakfast',
-              lunch: 'lunch', 
-              dinner: 'dinner',
-              snacks: 'snack'
+            // Sadece bugünkü plan için öğün ekle
+            const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long' }).toLowerCase();
+            const dayMapping: Record<string, string> = {
+              'pazartesi': 'pazartesi',
+              'salı': 'sali',
+              'çarşamba': 'carsamba',
+              'perşembe': 'persembe',
+              'cuma': 'cuma',
+              'cumartesi': 'cumartesi',
+              'pazar': 'pazar'
             };
+            
+            if (dayMapping[today] === targetDay) {
+              // Öğün tipini MealService formatına çevir
+              const mealTypeMapping: Record<string, 'breakfast' | 'lunch' | 'dinner' | 'snack'> = {
+                breakfast: 'breakfast',
+                lunch: 'lunch', 
+                dinner: 'dinner',
+                snacks: 'snack'
+              };
 
-            await MealService.addMeal({
-              user_id: user.id,
-              name: selectedRecipe.name,
-              total_calories: selectedRecipe.calories,
-              total_protein: selectedRecipe.protein,
-              total_carbs: selectedRecipe.carbs,
-              total_fat: selectedRecipe.fat,
-              meal_type: mealTypeMapping[targetMealType] || 'lunch'
-            });
+              // Duplicate kontrolü yap
+              const existingMeals = await MealService.getTodayMeals(user.id);
+              const isDuplicate = existingMeals.some(meal => 
+                meal.name === selectedRecipe.name && 
+                meal.total_calories === selectedRecipe.calories
+              );
+
+              if (!isDuplicate) {
+                await MealService.addMeal({
+                  user_id: user.id,
+                  name: selectedRecipe.name,
+                  total_calories: selectedRecipe.calories,
+                  total_protein: selectedRecipe.protein,
+                  total_carbs: selectedRecipe.carbs,
+                  total_fat: selectedRecipe.fat,
+                  meal_type: mealTypeMapping[targetMealType] || 'lunch'
+                });
+              }
+            }
           }
 
           // Route params'ı temizle - custom navigation setParams desteklemiyor
@@ -503,10 +562,19 @@ export default function PlanEditScreen({ navigation, route }: Props) {
         is_active: !isEditing, // New plans are active by default
       };
 
+      // Mevcut aktif plan var mı kontrol et
+      const hasActivePlan = activePlan || currentActivePlan;
+      
       if (isEditing && existingPlan?.id) {
+        // Mevcut planı güncelle
         await updatePlan(existingPlan.id, planData);
-        // Global store'u güncelle
-        setCurrentPlan({ ...planData, id: existingPlan.id } as DietPlan);
+        const updatedPlan = { ...planData, id: existingPlan.id } as DietPlan;
+        setCurrentPlan(updatedPlan);
+        setActivePlan(updatedPlan);
+        
+        // Plan değişikliklerini meals tablosuna senkronize et
+        await syncPlanToMeals();
+        
         Alert.alert('Başarılı', 'Plan güncellendi!', [
           {
             text: 'Tamam',
@@ -519,11 +587,40 @@ export default function PlanEditScreen({ navigation, route }: Props) {
             }
           }
         ]);
+      } else if (hasActivePlan && !isEditing) {
+        // Aktif plan varsa güncelle, yeni plan oluşturma
+        const planToUpdate = activePlan || currentActivePlan;
+        if (planToUpdate?.id) {
+          await updatePlan(planToUpdate.id, planData);
+          const updatedPlan = { ...planData, id: planToUpdate.id } as DietPlan;
+          setCurrentPlan(updatedPlan);
+          setActivePlan(updatedPlan);
+          
+          // Plan değişikliklerini meals tablosuna senkronize et
+          await syncPlanToMeals();
+          
+          Alert.alert('Başarılı', 'Mevcut plan güncellendi!', [
+            {
+              text: 'Tamam',
+              onPress: () => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  navigation.navigate('Plan');
+                }
+              }
+            }
+          ]);
+        }
       } else {
+        // Yeni plan oluştur
         const newPlan = await createPlan(planData);
-        // Global store'u güncelle - yeni plan oluşturulduğunda currentPlan'i set et
         if (newPlan) {
           setCurrentPlan(newPlan);
+          setActivePlan(newPlan);
+          
+          // Plan değişikliklerini meals tablosuna senkronize et
+          await syncPlanToMeals();
         }
         Alert.alert('Başarılı', 'Plan oluşturuldu!', [
           {
@@ -539,6 +636,7 @@ export default function PlanEditScreen({ navigation, route }: Props) {
         ]);
       }
     } catch (error) {
+      console.error('Plan kaydetme hatası:', error);
       Alert.alert('Hata', 'Plan kaydedilemedi');
     }
   };
@@ -664,7 +762,7 @@ export default function PlanEditScreen({ navigation, route }: Props) {
     }
   };
 
-  const addMeal = () => {
+  const addMeal = async () => {
     const newMeal: MealPlan = {
       id: Date.now().toString(),
       name: 'Yeni Öğün',
@@ -675,16 +773,33 @@ export default function PlanEditScreen({ navigation, route }: Props) {
       fat: 0,
     };
 
-    setWeeklyPlan(prev => ({
-      ...prev,
-      [selectedDay]: {
-        ...prev[selectedDay],
-        [selectedMealType]: [...prev[selectedDay][selectedMealType], newMeal],
-      },
-    }));
+    try {
+      // Önce local state'i güncelle (UI için)
+      setWeeklyPlan(prev => ({
+        ...prev,
+        [selectedDay]: {
+          ...prev[selectedDay],
+          [selectedMealType]: [...prev[selectedDay][selectedMealType], newMeal],
+        },
+      }));
+
+      // Sonra global state'i güncelle (persistence için)
+      await updateExistingPlan(String(selectedDay), selectedMealType, newMeal);
+    } catch (error) {
+      console.error('Plan güncelleme hatası:', error);
+      // Hata durumunda local state'i geri al
+      setWeeklyPlan(prev => ({
+        ...prev,
+        [selectedDay]: {
+          ...prev[selectedDay],
+          [selectedMealType]: prev[selectedDay][selectedMealType].filter(meal => meal.id !== newMeal.id),
+        },
+      }));
+    }
   };
 
   const updateMeal = (mealIndex: number, field: keyof MealPlan, value: string | number) => {
+    // Local state'i güncelle
     setWeeklyPlan(prev => ({
       ...prev,
       [selectedDay]: {
@@ -694,9 +809,13 @@ export default function PlanEditScreen({ navigation, route }: Props) {
         ),
       },
     }));
+
+    // Global state'i de güncelle
+    updatePlanMeal(String(selectedDay), selectedMealType, mealIndex, { [field]: value });
   };
 
   const deleteMeal = (mealIndex: number) => {
+    // Local state'i güncelle
     setWeeklyPlan(prev => ({
       ...prev,
       [selectedDay]: {
@@ -704,6 +823,9 @@ export default function PlanEditScreen({ navigation, route }: Props) {
         [selectedMealType]: prev[selectedDay][selectedMealType].filter((_, index) => index !== mealIndex),
       },
     }));
+
+    // Global state'i de güncelle
+    removeMealFromPlan(String(selectedDay), selectedMealType, mealIndex);
   };
 
   const currentMeals = weeklyPlan[selectedDay][selectedMealType];
@@ -968,45 +1090,89 @@ export default function PlanEditScreen({ navigation, route }: Props) {
                 ))}
               </ScrollView>
 
-              {/* Meal Type Selector */}
-              <View style={styles.mealTypeSelector}>
-                {MEAL_TYPES.map((type) => (
-                  <TouchableOpacity
-                    key={type.value}
-                    style={[
-                      styles.mealTypeChip,
-                      selectedMealType === type.value && styles.mealTypeChipActive
-                    ]}
-                    onPress={() => setSelectedMealType(type.value)}
-                  >
-                    <Ionicons 
-                      name={type.icon as any} 
-                      size={16} 
-                      color={selectedMealType === type.value ? '#667eea' : (isDark ? '#888888' : '#999999')} 
-                    />
-                    <Text style={[
-                      styles.mealTypeChipText,
-                      selectedMealType === type.value && styles.mealTypeChipTextActive,
-                      { color: selectedMealType === type.value ? '#667eea' : (isDark ? '#FFFFFF' : '#2C3E50') }
-                    ]}>
-                      {type.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              {/* Meal Type Selector - Improved */}
+              <View style={styles.mealTypeSelectorContainer}>
+                <Text style={[styles.mealTypeSelectorTitle, { color: isDark ? '#CCCCCC' : '#666666' }]}>
+                  Öğün Tipi Seçin:
+                </Text>
+                <View style={styles.mealTypeSelector}>
+                  {MEAL_TYPES.map((type) => (
+                    <TouchableOpacity
+                      key={type.value}
+                      style={[
+                        styles.mealTypeChip,
+                        selectedMealType === type.value && [
+                          styles.mealTypeChipActive,
+                          { 
+                            backgroundColor: `${type.color}20`,
+                            borderColor: `${type.color}40`
+                          }
+                        ]
+                      ]}
+                      onPress={() => setSelectedMealType(type.value)}
+                    >
+                      <Ionicons 
+                        name={type.icon as any} 
+                        size={16} 
+                        color={selectedMealType === type.value ? type.color : (isDark ? '#888888' : '#999999')} 
+                      />
+                      <Text style={[
+                        styles.mealTypeChipText,
+                        selectedMealType === type.value && styles.mealTypeChipTextActive,
+                        { color: selectedMealType === type.value ? type.color : (isDark ? '#FFFFFF' : '#2C3E50') }
+                      ]}>
+                        {type.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
 
-              {/* Meals List */}
+              {/* Meals List - Enhanced */}
               <LinearGradient
                 colors={isDark ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)'] : ['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.6)']}
                 style={styles.card}
               >
                 <View style={styles.mealsHeader}>
-                  <Text style={[styles.mealsTitle, { color: isDark ? '#FFFFFF' : '#2C3E50' }]}>
-                    {MEAL_TYPES.find(t => t.value === selectedMealType)?.label} - {dayLabels[selectedDay]}
-                  </Text>
-                  <TouchableOpacity style={styles.addMealButton} onPress={addMeal}>
-                    <Ionicons name="add" size={20} color="#667eea" />
-                  </TouchableOpacity>
+                  <View style={styles.mealsHeaderInfo}>
+                    <Text style={[styles.mealsTitle, { color: isDark ? '#FFFFFF' : '#2C3E50' }]}>
+                      {MEAL_TYPES.find(t => t.value === selectedMealType)?.label}
+                    </Text>
+                    <Text style={[styles.mealsSubtitle, { color: isDark ? '#CCCCCC' : '#666666' }]}>
+                      {dayLabels[selectedDay]} - {currentMeals.length} öğün
+                    </Text>
+                  </View>
+                  <View style={styles.mealsHeaderActions}>
+                    <TouchableOpacity 
+                      style={[
+                        styles.addMealButton,
+                        { backgroundColor: `${selectedMealTypeData?.color}20` }
+                      ]} 
+                      onPress={addMeal}
+                    >
+                      <Ionicons name="add" size={20} color={selectedMealTypeData?.color || "#667eea"} />
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[
+                        styles.addRecipeButton,
+                        { 
+                          backgroundColor: `${selectedMealTypeData?.color}20`,
+                          borderColor: `${selectedMealTypeData?.color}30`
+                        }
+                      ]}
+                      onPress={() => navigation.navigate('RecipeSearch', { 
+                        selectedDay, 
+                        selectedMealType,
+                        returnScreen: 'PlanEdit'
+                      })}
+                    >
+                      <Ionicons name="restaurant" size={16} color={selectedMealTypeData?.color || "#667eea"} />
+                      <Text style={[
+                        styles.addRecipeButtonText,
+                        { color: selectedMealTypeData?.color || "#667eea" }
+                      ]}>Tarif Ekle</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {currentMeals.length === 0 ? (
@@ -1346,15 +1512,31 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingHorizontal: 16,
   },
+  daySelectorContainer: {
+    marginBottom: 16,
+  },
+  daySelectorTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
   dayChip: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     marginRight: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   dayChipActive: {
     backgroundColor: 'rgba(102, 126, 234, 0.2)',
+    borderColor: 'rgba(102, 126, 234, 0.4)',
+  },
+  dayChipToday: {
+    backgroundColor: 'rgba(46, 204, 113, 0.2)',
+    borderColor: 'rgba(46, 204, 113, 0.4)',
   },
   dayChipText: {
     fontSize: 14,
@@ -1362,6 +1544,25 @@ const styles = StyleSheet.create({
   },
   dayChipTextActive: {
     fontWeight: '600',
+    color: '#667EEA',
+  },
+  dayChipTextToday: {
+    fontWeight: '600',
+    color: '#2ECC71',
+  },
+  todayIndicator: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#2ECC71',
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  todayIndicatorText: {
+    fontSize: 8,
+    fontWeight: '600',
+    color: 'white',
   },
   mealTypeSelector: {
     flexDirection: 'row',
@@ -1369,6 +1570,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 16,
     gap: 8,
+  },
+  mealTypeSelectorContainer: {
+    marginBottom: 16,
+  },
+  mealTypeSelectorTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    paddingHorizontal: 20,
+    marginBottom: 12,
   },
   mealTypeChip: {
     flexDirection: 'row',
@@ -1395,9 +1605,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  mealsHeaderInfo: {
+    flex: 1,
+  },
   mealsTitle: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  mealsSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+    opacity: 0.7,
+  },
+  mealsHeaderActions: {
+    flexDirection: 'row',
+    gap: 8,
   },
   addMealButton: {
     width: 32,
@@ -1406,6 +1628,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(102, 126, 234, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  addRecipeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(102, 126, 234, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(102, 126, 234, 0.3)',
+  },
+  addRecipeButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+    color: '#667EEA',
   },
   emptyMeals: {
     alignItems: 'center',

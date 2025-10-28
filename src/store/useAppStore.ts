@@ -20,7 +20,9 @@ interface AppState {
   
   // Plan yönetimi
   currentPlan: DietPlan | null;
+  activePlan: DietPlan | null; // Aktif plan (veritabanından)
   isEditingPlan: boolean;
+  planMealSync: boolean; // Plan-Meal senkronizasyon durumu
   
   // UI durumu
   isLoading: boolean;
@@ -42,11 +44,18 @@ interface AppState {
   // Plan yönetimi actions
   createNewPlan: (planData: Partial<DietPlan>) => void;
   setCurrentPlan: (plan: DietPlan | null) => void;
+  setActivePlan: (plan: DietPlan | null) => void;
   addRecipeToMeal: (day: string, mealType: keyof DayPlan, recipe: MealPlan, planData?: Partial<DietPlan>) => void;
   updatePlanMeal: (day: string, mealType: keyof DayPlan, mealIndex: number, updatedMeal: Partial<MealPlan>) => void;
   removeMealFromPlan: (day: string, mealType: keyof DayPlan, mealIndex: number) => void;
   clearCurrentPlan: () => void;
   setEditingPlan: (isEditing: boolean) => void;
+  setPlanMealSync: (sync: boolean) => void;
+  
+  // Plan-Meal senkronizasyon fonksiyonları
+  syncPlanToMeals: () => Promise<void>;
+  syncMealsToPlan: () => Promise<void>;
+  updateExistingPlan: (day: string, mealType: keyof DayPlan, recipe: MealPlan) => Promise<void>;
   
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -69,7 +78,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   recipes: [],
   favoriteRecipes: [],
   currentPlan: null,
+  activePlan: null,
   isEditingPlan: false,
+  planMealSync: false,
   isLoading: false,
   error: null,
 
@@ -243,6 +254,127 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearCurrentPlan: () => set({ currentPlan: null, isEditingPlan: false }),
 
   setEditingPlan: (isEditing) => set({ isEditingPlan: isEditing }),
+
+  setActivePlan: (plan) => set({ activePlan: plan }),
+
+  setPlanMealSync: (sync) => set({ planMealSync: sync }),
+
+  // Plan-Meal senkronizasyon fonksiyonları
+  syncPlanToMeals: async () => {
+    // Plan değişikliklerini meals tablosuna yansıt
+    const { currentPlan, user } = get();
+    if (!currentPlan || !user) return;
+
+    try {
+      const { MealService } = await import('../services/mealService');
+      
+      // Bugünün tarihini al
+      const today = new Date().toISOString().split('T')[0];
+      const dayOfWeek = new Date().toLocaleDateString('tr-TR', { weekday: 'long' }).toLowerCase();
+      
+      // Gün eşleştirme
+      const dayMap: { [key: string]: string } = {
+        'pazartesi': 'pazartesi',
+        'salı': 'sali',
+        'çarşamba': 'carsamba',
+        'perşembe': 'persembe',
+        'cuma': 'cuma',
+        'cumartesi': 'cumartesi',
+        'pazar': 'pazar'
+      };
+      
+      const planDayKey = dayMap[dayOfWeek];
+      
+      // Sadece bugünün planını meals tablosuna ekle (duplicate önlemek için)
+      if (planDayKey && currentPlan.weekly_plan[planDayKey]) {
+        const todayPlan = currentPlan.weekly_plan[planDayKey];
+        
+        // Bugünün mevcut öğünlerini kontrol et (duplicate önlemek için)
+        const existingMeals = await MealService.getTodayMeals(user.id);
+        
+        Object.entries(todayPlan).forEach(async ([mealType, meals]) => {
+          for (const meal of meals) {
+            // Aynı isimde öğün bugün zaten var mı kontrol et
+            const isDuplicate = existingMeals.some(existingMeal => 
+              existingMeal.name === meal.name && 
+              existingMeal.total_calories === meal.calories
+            );
+            
+            if (!isDuplicate) {
+              const mealTypeMapping: Record<string, 'breakfast' | 'lunch' | 'dinner' | 'snack'> = {
+                breakfast: 'breakfast',
+                lunch: 'lunch', 
+                dinner: 'dinner',
+                snacks: 'snack'
+              };
+
+              await MealService.addMeal({
+                user_id: user.id,
+                name: meal.name,
+                total_calories: meal.calories,
+                total_protein: meal.protein,
+                total_carbs: meal.carbs,
+                total_fat: meal.fat,
+                meal_type: mealTypeMapping[mealType] || 'lunch'
+              });
+            }
+          }
+        });
+      }
+
+      // Senkronizasyon flag'ini set et
+      set({ planMealSync: true });
+    } catch (error) {
+      console.error('Plan-Meal sync error:', error);
+    }
+  },
+
+  syncMealsToPlan: async () => {
+    // Meals tablosundaki değişiklikleri plana yansıt
+    // Bu fonksiyon gerektiğinde implement edilecek
+  },
+
+  updateExistingPlan: async (day, mealType, recipe) => {
+    const { activePlan, currentPlan, syncPlanToMeals } = get();
+    const planToUpdate = activePlan || currentPlan;
+    
+    if (!planToUpdate) return;
+
+    try {
+      const { PlanService } = await import('../services/planService');
+      
+      // Mevcut planı güncelle (yeni plan oluşturma)
+      const updatedPlan = { ...planToUpdate };
+      
+      if (!updatedPlan.weekly_plan[day]) {
+        updatedPlan.weekly_plan[day] = {
+          breakfast: [],
+          lunch: [],
+          dinner: [],
+          snacks: []
+        };
+      }
+
+      // Ensure mealType array exists
+      if (!updatedPlan.weekly_plan[day][mealType]) {
+        updatedPlan.weekly_plan[day][mealType] = [];
+      }
+
+      updatedPlan.weekly_plan[day][mealType].push(recipe);
+      updatedPlan.updated_at = new Date().toISOString();
+
+      // Veritabanını güncelle
+      if (planToUpdate.id) {
+        await PlanService.updatePlan(planToUpdate.id, updatedPlan);
+        set({ activePlan: updatedPlan, currentPlan: updatedPlan });
+        
+        // Plan değişikliklerini meals tablosuna senkronize et
+        await syncPlanToMeals();
+      }
+    } catch (error) {
+      console.error('Plan update error:', error);
+    }
+  },
 
   // UI actions
   setLoading: (loading) => set({ isLoading: loading }),
