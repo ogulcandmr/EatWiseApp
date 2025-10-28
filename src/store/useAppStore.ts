@@ -56,6 +56,7 @@ interface AppState {
   syncPlanToMeals: () => Promise<void>;
   syncMealsToPlan: () => Promise<void>;
   updateExistingPlan: (day: string, mealType: keyof DayPlan, recipe: MealPlan) => Promise<void>;
+  loadActivePlan: (userId: string) => Promise<void>;
   
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -292,7 +293,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Bugünün mevcut öğünlerini kontrol et (duplicate önlemek için)
         const existingMeals = await MealService.getTodayMeals(user.id);
         
-        Object.entries(todayPlan).forEach(async ([mealType, meals]) => {
+        // Öğün tiplerini sırayla işle
+        for (const [mealType, meals] of Object.entries(todayPlan)) {
           for (const meal of meals) {
             // Aynı isimde öğün bugün zaten var mı kontrol et
             const isDuplicate = existingMeals.some(existingMeal => 
@@ -319,13 +321,10 @@ export const useAppStore = create<AppState>((set, get) => ({
               });
             }
           }
-        });
+        }
       }
-
-      // Senkronizasyon flag'ini set et
-      set({ planMealSync: true });
     } catch (error) {
-      console.error('Plan-Meal sync error:', error);
+      console.error('Plan-Meal senkronizasyon hatası:', error);
     }
   },
 
@@ -373,6 +372,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch (error) {
       console.error('Plan update error:', error);
+    }
+  },
+
+  loadActivePlan: async (userId) => {
+    try {
+      const { PlanService } = await import('../services/planService');
+      const activePlan = await PlanService.getActivePlan(userId);
+      
+      if (activePlan) {
+        set({ activePlan, currentPlan: activePlan });
+        
+        // Aktif plan yüklendikten sonra plan öğünlerini meals tablosuna senkronize et
+        const { syncPlanToMeals } = get();
+        await syncPlanToMeals();
+      }
+    } catch (error) {
+      console.error('Aktif plan yükleme hatası:', error);
     }
   },
 

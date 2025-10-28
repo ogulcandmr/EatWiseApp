@@ -24,6 +24,7 @@ import RecipeDetailScreen from './src/screens/RecipeDetailScreen';
 import EditPlanScreen from './src/screens/PlanEditScreen';
 import PlanDetailScreen from './src/screens/PlanDetailScreen';
 import AIChat, { FloatingChatButton } from './src/components/AIChat';
+import { useAppStore } from './src/store/useAppStore';
 
 type Screen = 'home' | 'meals' | 'camera' | 'recipes' | 'health' | 'profile' | 'explore' | 'plan' | 'recipesList' | 'auth' | 'modernAuth' | 'cameraNative' | 'profileEdit' | 'tracking' | 'recipeDetailDemo' | 'editPlan' | 'ingredientsToRecipe' | 'planDetail';
 
@@ -35,6 +36,7 @@ function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [showAIChat, setShowAIChat] = useState(false);
   const [navigationParams, setNavigationParams] = useState<any>({});
+  const { loadActivePlan } = useAppStore();
 
   useEffect(() => {
     // Auth state değişikliklerini dinle
@@ -44,6 +46,9 @@ function AppContent() {
           const userProfile = await AuthService.getUserProfile(supabaseUser.id);
           setUser(userProfile);
           setIsAuthenticated(true);
+          
+          // Kullanıcı giriş yaptıktan sonra aktif planı yükle
+          await loadActivePlan(supabaseUser.id);
         } catch (error) {
           console.error('Kullanıcı profili yüklenemedi:', error);
           setIsAuthenticated(false);
@@ -57,7 +62,7 @@ function AppContent() {
 
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadActivePlan]);
 
   // Loading ekranı
   if (isLoading) {
