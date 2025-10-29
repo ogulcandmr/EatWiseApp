@@ -93,6 +93,12 @@ export class MealCompletionService {
     try {
       const targetDate = date || new Date().toISOString().split('T')[0];
 
+      console.log('=== GET DAY COMPLETIONS DEBUG ===');
+      console.log('userId:', userId);
+      console.log('planId:', planId);
+      console.log('dayOfWeek:', dayOfWeek);
+      console.log('targetDate:', targetDate);
+
       const { data, error } = await supabase
         .from('meal_completions')
         .select('*')
@@ -101,6 +107,10 @@ export class MealCompletionService {
         .eq('completion_date', targetDate)
         .eq('day_of_week', dayOfWeek)
         .not('completed_at', 'is', null);
+
+      console.log('Query result - data:', data);
+      console.log('Query result - error:', error);
+      console.log('=== END GET DAY COMPLETIONS DEBUG ===');
 
       if (error) throw error;
       return data || [];

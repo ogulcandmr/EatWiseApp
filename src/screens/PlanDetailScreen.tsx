@@ -29,6 +29,15 @@ export default function PlanDetailScreen({ navigation, route }: PlanDetailScreen
   const { plan } = route.params;
   const { isDark } = useTheme();
 
+  console.log('=== PLAN DETAIL SCREEN DEBUG ===');
+  console.log('Plan received from route:', plan);
+  console.log('Plan ID:', plan?.id);
+  console.log('Plan user_id:', plan?.user_id);
+  console.log('Plan name:', plan?.name);
+  console.log('Plan is_active:', plan?.is_active);
+  console.log('Plan weekly_plan keys:', plan?.weekly_plan ? Object.keys(plan.weekly_plan) : 'No weekly_plan');
+  console.log('=== END PLAN DETAIL SCREEN DEBUG ===');
+
   const handleGoBack = () => {
     navigation.goBack();
   };

@@ -42,6 +42,9 @@ export const useAuth = () => {
 
   const loadUserProfile = async (userId: string) => {
     try {
+      console.log('=== LOAD USER PROFILE DEBUG ===');
+      console.log('Loading profile for userId:', userId);
+      
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -49,6 +52,7 @@ export const useAuth = () => {
         .single();
 
       if (error) {
+        console.log('Profile load error:', error);
         // Eğer kullanıcı profili yoksa (PGRST116 hatası), yeni profil oluştur
         if (error.code === 'PGRST116') {
           console.log('Kullanıcı profili bulunamadı, yeni profil oluşturuluyor...');
@@ -57,6 +61,7 @@ export const useAuth = () => {
           const { data: authUser } = await supabase.auth.getUser();
           
           if (authUser.user) {
+            console.log('Auth user found:', authUser.user.id, authUser.user.email);
             // Yeni profil oluştur
             const { data: newProfile, error: insertError } = await supabase
               .from('users')
@@ -76,6 +81,7 @@ export const useAuth = () => {
               throw insertError;
             }
 
+            console.log('New profile created:', newProfile);
             // Yeni oluşturulan profili kullan
             setUser({
               id: newProfile.id,
@@ -91,12 +97,14 @@ export const useAuth = () => {
               dislikes: newProfile.dislikes || [],
               planType: newProfile.plan_type
             });
+            console.log('User set with new profile');
             return;
           }
         }
         throw error;
       }
 
+      console.log('Profile loaded successfully:', data);
       setUser({
         id: data.id,
         email: data.email,
@@ -111,6 +119,8 @@ export const useAuth = () => {
         dislikes: data.dislikes || [],
         planType: data.plan_type
       });
+      console.log('User set with existing profile');
+      console.log('=== END LOAD USER PROFILE DEBUG ===');
     } catch (error) {
       console.error('Profil getirilirken hata:', error);
       setUser(null);

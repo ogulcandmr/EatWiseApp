@@ -49,12 +49,22 @@ export class AuthService {
   // Kullanıcı girişi
   static async login(email: string, password: string): Promise<UserProfile> {
     try {
+      // Debug: Login öncesi session kontrolü
+      console.log('=== LOGIN DEBUG ===');
+      const { data: { session: oldSession } } = await supabase.auth.getSession();
+      console.log('Login öncesi session:', oldSession?.user?.id);
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
+      
+      // Debug: Login sonrası session kontrolü
+      console.log('Login sonrası user_id:', data.user?.id);
+      console.log('Login email:', email);
+      console.log('=== END LOGIN DEBUG ===');
 
       if (data.user) {
         // Kullanıcı profilini getir
@@ -93,8 +103,15 @@ export class AuthService {
   // Kullanıcı çıkışı
   static async logout(): Promise<void> {
     try {
-      const { error } = await supabase.auth.signOut();
+      // Session'ı tamamen temizle
+      const { error } = await supabase.auth.signOut({ scope: 'global' });
       if (error) throw error;
+      
+      // Debug: Logout sonrası session kontrolü
+      console.log('=== LOGOUT DEBUG ===');
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Logout sonrası session:', session);
+      console.log('=== END LOGOUT DEBUG ===');
     } catch (error: any) {
       throw new Error('Çıkış yapılırken hata oluştu');
     }

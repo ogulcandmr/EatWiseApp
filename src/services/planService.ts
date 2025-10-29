@@ -462,7 +462,10 @@ export class PlanService {
    * Günün öğünlerini getir
    */
   static getTodayMeals(plan: DietPlan): DayPlan | null {
+    console.log('=== getTodayMeals PLAN DEBUG ===');
     const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long' }).toLowerCase();
+    console.log('Today from locale:', today);
+    
     const dayMap: { [key: string]: string } = {
       'pazartesi': 'pazartesi',
       'salı': 'sali',
@@ -474,7 +477,22 @@ export class PlanService {
     };
 
     const dayKey = dayMap[today];
-    return plan.weekly_plan[dayKey] || null;
+    console.log('Mapped day key:', dayKey);
+    console.log('Available plan days:', Object.keys(plan.weekly_plan));
+    
+    const dayPlan = plan.weekly_plan[dayKey];
+    console.log('Found day plan:', dayPlan ? 'YES' : 'NO');
+    if (dayPlan) {
+      console.log('Day plan meals count:', {
+        breakfast: dayPlan.breakfast?.length || 0,
+        lunch: dayPlan.lunch?.length || 0,
+        dinner: dayPlan.dinner?.length || 0,
+        snacks: dayPlan.snacks?.length || 0
+      });
+    }
+    console.log('=== END getTodayMeals PLAN DEBUG ===');
+    
+    return dayPlan || null;
   }
 
   /**

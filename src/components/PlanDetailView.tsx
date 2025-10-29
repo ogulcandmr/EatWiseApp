@@ -33,7 +33,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const getTodayIndex = () => {
     const today = new Date();
     const dayOfWeek = today.getDay(); // 0: Pazar, 1: Pazartesi, ..., 6: Cumartesi
-    // JavaScript'te Pazar 0, bizde Pazartesi 0 olduğu için dönüştürme yapıyoruz
+    // dayKeys array'i: ['pazartesi', 'sali', 'carsamba', 'persembe', 'cuma', 'cumartesi', 'pazar']
+    // JavaScript getDay(): 0=Pazar, 1=Pazartesi, 2=Salı, 3=Çarşamba, 4=Perşembe, 5=Cuma, 6=Cumartesi
+    // dayKeys indeksi: 0=Pazartesi, 1=Salı, 2=Çarşamba, 3=Perşembe, 4=Cuma, 5=Cumartesi, 6=Pazar
     return dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Pazar -> 6, Pazartesi -> 0, ..., Cumartesi -> 5
   };
   
@@ -62,14 +64,33 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   }, [selectedDay, plan.id, user?.id]);
 
   const loadCompletedMeals = async () => {
-    if (!user?.id || !plan.id) return;
+    if (!user?.id || !plan.id) {
+      console.log('=== MEAL COMPLETION DEBUG ===');
+      console.log('User ID:', user?.id);
+      console.log('Plan ID:', plan.id);
+      console.log('Plan user_id:', plan.user_id);
+      console.log('User object:', user);
+      console.log('Plan object keys:', Object.keys(plan));
+      console.log('=== END DEBUG ===');
+      return;
+    }
 
+    console.log('=== LOADING COMPLETED MEALS ===');
+    console.log('Current user ID:', user.id);
+    console.log('Plan ID:', plan.id);
+    console.log('Plan user_id:', plan.user_id);
+    console.log('Selected day:', selectedDay);
+    console.log('Day key:', dayKeys[selectedDay]);
+    
     const dayOfWeek = dayKeys[selectedDay];
     const completions = await MealCompletionService.getDayCompletions(
       user.id,
       plan.id,
       dayOfWeek
     );
+
+    console.log('Meal completions found:', completions.length);
+    console.log('Completions:', completions);
 
     const completedSet = new Set<string>();
     completions.forEach(completion => {
@@ -95,20 +116,31 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const dayKeys = ['pazartesi', 'sali', 'carsamba', 'persembe', 'cuma', 'cumartesi', 'pazar'];
 
   const getCurrentDayPlan = (): DayPlan | null => {
+    console.log('=== getCurrentDayPlan DEBUG ===');
+    console.log('selectedDay:', selectedDay);
+    console.log('dayKeys:', dayKeys);
+    console.log('dayKeys[selectedDay]:', dayKeys[selectedDay]);
+    console.log('plan.weekly_plan keys:', plan?.weekly_plan ? Object.keys(plan.weekly_plan) : 'no weekly_plan');
+    
     // Güvenlik kontrolleri
     if (!plan || !plan.weekly_plan) {
+      console.log('No plan or weekly_plan');
       return null;
     }
     if (selectedDay < 0 || selectedDay >= dayKeys.length) {
+      console.log('Invalid selectedDay index');
       return null;
     }
     
     const dayKey = dayKeys[selectedDay];
     if (!dayKey) {
+      console.log('No dayKey found');
       return null;
     }
     
     const dayPlan = plan.weekly_plan[dayKey];
+    console.log('dayPlan for', dayKey, ':', dayPlan);
+    console.log('=== END getCurrentDayPlan DEBUG ===');
     return dayPlan || null;
   };
 

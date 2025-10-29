@@ -67,7 +67,7 @@ export default function PlanEditScreen(props: PlanEditScreenProps) {
   const [dailyCarbs, setDailyCarbs] = useState<string>('250');
   const [dailyFat, setDailyFat] = useState<string>('67');
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlan>({});
-  const [selectedDay, setSelectedDay] = useState<keyof DietPlan['weekly_plan']>('monday');
+  const [selectedDay, setSelectedDay] = useState<keyof DietPlan['weekly_plan']>('pazartesi');
   const [selectedMealType, setSelectedMealType] = useState<keyof DayPlan>('breakfast');
   const [existingPlan, setExistingPlan] = useState<DietPlan | null>(null);
   const [isDark] = useState(false);
@@ -181,7 +181,7 @@ export default function PlanEditScreen(props: PlanEditScreenProps) {
       } else {
         // Create new plan
         const initialWeeklyPlan: WeeklyPlan = {};
-        const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        const days = ['pazartesi', 'sali', 'carsamba', 'persembe', 'cuma', 'cumartesi', 'pazar'];
         days.forEach(day => {
           initialWeeklyPlan[day] = {
             breakfast: [],

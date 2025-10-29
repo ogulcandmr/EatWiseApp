@@ -28,6 +28,15 @@ export class MealService {
    */
   static async addMeal(mealData: Omit<MealData, 'id' | 'created_at'>): Promise<MealData> {
     try {
+      // Debug: Auth session ve user_id kontrolü
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('=== MEAL ADD DEBUG ===');
+      console.log('Gönderilen user_id:', mealData.user_id);
+      console.log('Auth session user_id:', session?.user?.id);
+      console.log('Session var mı:', !!session);
+      console.log('User authenticated:', !!session?.user);
+      console.log('=== END DEBUG ===');
+
       const { data, error } = await supabase
         .from('meals')
         .insert([{
@@ -72,6 +81,11 @@ export class MealService {
     endDate?: Date
   ): Promise<MealData[]> {
     try {
+      console.log('=== getMeals DEBUG ===');
+      console.log('User ID:', userId);
+      console.log('Start Date:', startDate?.toISOString());
+      console.log('End Date:', endDate?.toISOString());
+      
       let query = supabase
         .from('meals')
         .select('*')
@@ -87,6 +101,15 @@ export class MealService {
       }
 
       const { data, error } = await query;
+      
+      console.log('Query result - data count:', data?.length || 0);
+      console.log('Query error:', error);
+      if (data) {
+        data.forEach(meal => {
+          console.log('- Found meal:', meal.name, 'user_id:', meal.user_id, 'created_at:', meal.created_at);
+        });
+      }
+      console.log('=== END getMeals DEBUG ===');
 
       if (error) throw error;
 
@@ -111,13 +134,24 @@ export class MealService {
    * Bugünün öğünlerini getir
    */
   static async getTodayMeals(userId: string): Promise<MealData[]> {
+    console.log('=== getTodayMeals DEBUG ===');
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    console.log('Today range:', today.toISOString(), 'to', tomorrow.toISOString());
+    console.log('User ID:', userId);
 
-    return this.getMeals(userId, today, tomorrow);
+    const meals = await this.getMeals(userId, today, tomorrow);
+    console.log('Found meals for today:', meals.length);
+    meals.forEach(meal => {
+      console.log('- Meal:', meal.name, 'created_at:', meal.created_at);
+    });
+    console.log('=== END getTodayMeals DEBUG ===');
+    
+    return meals;
   }
 
   /**
