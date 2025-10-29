@@ -47,6 +47,7 @@ interface AppState {
   setActivePlan: (plan: DietPlan | null) => void;
   addRecipeToMeal: (day: string, mealType: keyof DayPlan, recipe: MealPlan, planData?: Partial<DietPlan>) => void;
   updatePlanMeal: (day: string, mealType: keyof DayPlan, mealIndex: number, updatedMeal: Partial<MealPlan>) => void;
+  updateMealById: (mealId: string, updatedMeal: Partial<MealPlan>) => void;
   removeMealFromPlan: (day: string, mealType: keyof DayPlan, mealIndex: number) => void;
   clearCurrentPlan: () => void;
   setEditingPlan: (isEditing: boolean) => void;
@@ -234,6 +235,23 @@ export const useAppStore = create<AppState>((set, get) => ({
         (meal, index) => index === mealIndex ? { ...meal, ...updatedMeal } : meal
       );
     }
+
+    return { currentPlan: updatedPlan };
+  }),
+
+  updateMealById: (mealId: string, updatedMeal: Partial<MealPlan>) => set((state) => {
+    if (!state.currentPlan) return state;
+
+    const updatedPlan = { ...state.currentPlan };
+    
+    // Tüm günleri ve öğün tiplerini kontrol et
+    Object.keys(updatedPlan.weekly_plan).forEach(day => {
+      (Object.keys(updatedPlan.weekly_plan[day]) as (keyof DayPlan)[]).forEach(mealType => {
+        updatedPlan.weekly_plan[day][mealType] = updatedPlan.weekly_plan[day][mealType].map(
+          (meal: MealPlan) => meal.id === mealId ? { ...meal, ...updatedMeal } : meal
+        );
+      });
+    });
 
     return { currentPlan: updatedPlan };
   }),

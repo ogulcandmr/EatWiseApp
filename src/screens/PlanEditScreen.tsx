@@ -651,6 +651,7 @@ export default function PlanEditScreen({ navigation, route }: Props) {
     navigation.navigate('ingredientsToRecipe', {
       initialIngredients: meal.description || meal.name,
       mealData: {
+        id: meal.id, // Mevcut öğün ID'sini ekle
         name: meal.name,
         calories: meal.calories || 0,
         protein: meal.protein || 0,
@@ -669,7 +670,8 @@ export default function PlanEditScreen({ navigation, route }: Props) {
         dailyFat,
         weeklyPlan,
         existingPlan
-      }
+      },
+      updateExistingMeal: true // Yeni öğün ekleme değil, mevcut öğünü güncelleme
     });
   };
 

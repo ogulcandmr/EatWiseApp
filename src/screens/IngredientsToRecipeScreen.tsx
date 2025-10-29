@@ -23,6 +23,7 @@ import { useAppStore } from '../store/useAppStore';
 interface RouteParams {
   initialIngredients?: string;
   mealData?: {
+    id?: string; // Mevcut öğün ID'si
     name: string;
     calories: number;
     protein: number;
@@ -31,6 +32,7 @@ interface RouteParams {
   };
   selectedDay?: string;
   selectedMealType?: string;
+  updateExistingMeal?: boolean; // Mevcut öğünü güncelleme flag'i
   // Plan state preservation
   planName?: string;
   goal?: string;
@@ -75,6 +77,7 @@ export default function IngredientsToRecipeScreen({ navigation, route }: Props =
     currentPlan, 
     createNewPlan, 
     addRecipeToMeal, 
+    updateMealById,
     setCurrentPlan 
   } = useAppStore();
   
@@ -168,8 +171,29 @@ export default function IngredientsToRecipeScreen({ navigation, route }: Props =
         mealType: params.selectedMealType,
         recipe: mealPlan,
         currentPlan: currentPlan ? 'Mevcut plan' : 'Yeni plan oluşturulacak',
-        planData: params
+        planData: params,
+        updateExisting: params.updateExistingMeal
       });
+
+      // Eğer mevcut öğün güncelleniyor ise
+      if (params.updateExistingMeal && params.mealData?.id) {
+        // Mevcut öğünü güncelle
+        updateMealById(params.mealData.id, {
+          name: mealPlan.name,
+          calories: mealPlan.calories,
+          protein: mealPlan.protein,
+          carbs: mealPlan.carbs,
+          fat: mealPlan.fat,
+          description: mealPlan.description,
+          ingredients: mealPlan.ingredients,
+          instructions: mealPlan.instructions
+        });
+        
+        setShowRecipeModal(false);
+        navigation.navigate('editPlan');
+        Alert.alert('Başarılı', 'Öğün tarifi güncellendi!');
+        return;
+      }
 
       // Plan bilgilerini DietPlan formatına çevir - önce currentPlanState'i kontrol et
       const currentPlanState = params.currentPlanState;

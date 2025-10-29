@@ -176,10 +176,10 @@ export class MealService {
   static calculateDailyTotals(meals: MealData[]): DailyTotal {
     const totals = meals.reduce(
       (acc, meal) => ({
-        totalCalories: acc.totalCalories + meal.total_calories,
-        totalProtein: acc.totalProtein + meal.total_protein,
-        totalCarbs: acc.totalCarbs + meal.total_carbs,
-        totalFat: acc.totalFat + meal.total_fat,
+        totalCalories: acc.totalCalories + (Number(meal.total_calories) || 0),
+        totalProtein: acc.totalProtein + (Number(meal.total_protein) || 0),
+        totalCarbs: acc.totalCarbs + (Number(meal.total_carbs) || 0),
+        totalFat: acc.totalFat + (Number(meal.total_fat) || 0),
         mealCount: acc.mealCount + 1
       }),
       {
@@ -191,9 +191,18 @@ export class MealService {
       }
     );
 
+    // Değerleri sınırla (çok büyük değerleri engelle)
+    const limitedTotals = {
+      totalCalories: Math.min(totals.totalCalories, 10000),
+      totalProtein: Math.min(totals.totalProtein, 500),
+      totalCarbs: Math.min(totals.totalCarbs, 1000),
+      totalFat: Math.min(totals.totalFat, 500),
+      mealCount: totals.mealCount
+    };
+
     return {
       date: new Date().toISOString().split('T')[0],
-      ...totals
+      ...limitedTotals
     };
   }
 
