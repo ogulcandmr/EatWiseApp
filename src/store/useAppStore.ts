@@ -399,6 +399,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       const activePlan = await PlanService.getActivePlan(userId);
       
       if (activePlan) {
+        // Güvenlik kontrolü: Plan'ın user_id'si istenen userId ile eşleşmeli
+        if (activePlan.user_id !== userId) {
+          console.error('Plan user_id mismatch! Plan user_id:', activePlan.user_id, 'Expected:', userId);
+          return;
+        }
+        
         set({ activePlan, currentPlan: activePlan });
         
         // Aktif plan yüklendikten sonra plan öğünlerini meals tablosuna senkronize et

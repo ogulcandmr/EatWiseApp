@@ -19,10 +19,19 @@ import { RecipeDbService, RecipeDb } from '../services/recipeDbService';
 import { AuthService } from '../services/authService';
 import { usePlans } from '../hooks/usePlans';
 import { PlanService } from '../services/planService';
+import { useAppStore } from '../store/useAppStore';
 
 const { width } = Dimensions.get('window');
 
-export default function ExploreScreen() {
+interface ExploreScreenProps {
+  navigation?: {
+    navigate: (screen: any, params?: any) => void;
+    goBack: () => void;
+  };
+  user?: any;
+}
+
+export default function ExploreScreen({ navigation }: ExploreScreenProps) {
   const [recipes, setRecipes] = useState<RecipeDb[]>([]);
   const [filteredRecipes, setFilteredRecipes] = useState<RecipeDb[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +48,7 @@ export default function ExploreScreen() {
   const [selectedMealType, setSelectedMealType] = useState<string>('');
 
   const { plans } = usePlans();
+  const { currentPlan, activePlan } = useAppStore();
 
   // Filter options
   const cuisines = RecipeDbService.getCuisineTypes();
@@ -144,8 +154,9 @@ export default function ExploreScreen() {
       const user = await AuthService.getCurrentUser();
       if (!user) return;
 
-      const activePlan = plans.find(plan => plan.is_active);
-      if (!activePlan) {
+      // Önce currentPlan'ı kontrol et, sonra activePlan'ı
+      const planToUse = currentPlan || activePlan || plans.find(plan => plan.is_active);
+      if (!planToUse) {
         Alert.alert('Hata', 'Aktif plan bulunamadı');
         return;
       }
@@ -162,7 +173,19 @@ export default function ExploreScreen() {
         instructions: selectedRecipe.steps
       };
 
-      const updatedPlan = { ...activePlan };
+      const updatedPlan = { ...planToUse };
+       if (!updatedPlan.weekly_plan) {
+         updatedPlan.weekly_plan = {
+           pazartesi: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+           sali: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+           carsamba: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+           persembe: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+           cuma: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+           cumartesi: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+           pazar: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+         };
+       }
+       
        if (!updatedPlan.weekly_plan[selectedDay]) {
          updatedPlan.weekly_plan[selectedDay] = {
            breakfast: [],
@@ -180,12 +203,23 @@ export default function ExploreScreen() {
          (dayPlan as any)[selectedMealType].push(mealPlan);
        }
 
-       await PlanService.updatePlan(activePlan.id!, updatedPlan);
+       if (planToUse.id) {
+         await PlanService.updatePlan(planToUse.id, updatedPlan);
+       }
       
       setAddToPlanVisible(false);
       setSelectedDay('');
       setSelectedMealType('');
-      Alert.alert('Başarılı', 'Tarif plana eklendi');
+      Alert.alert('Başarılı', 'Tarif plana eklendi', [
+        {
+          text: 'Tamam',
+          onPress: () => {
+            if (navigation?.navigate) {
+              navigation.navigate('plan');
+            }
+          }
+        }
+      ]);
     } catch (error) {
       console.error('Error adding recipe to plan:', error);
       Alert.alert('Hata', 'Tarif plana eklenirken bir hata oluştu');

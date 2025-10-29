@@ -46,7 +46,15 @@ interface CombinedMeal extends MealData {
   image_url?: string;
 }
 
-export default function MealsScreen() {
+interface MealsScreenProps {
+  navigation?: {
+    navigate: (screen: any, params?: any) => void;
+    goBack: () => void;
+  };
+  user?: any;
+}
+
+export default function MealsScreen({ navigation }: MealsScreenProps) {
   const { isDark } = useTheme();
   const [meals, setMeals] = useState<CombinedMeal[]>([]);
   const [dailyTotals, setDailyTotals] = useState<DailyTotal>({
@@ -130,11 +138,27 @@ export default function MealsScreen() {
     const planMeals: CombinedMeal[] = [];
     const plan = currentPlan || activePlan;
     
-    if (!plan?.weekly_plan) {
+    console.log('=== convertPlanMealsToMealData DEBUG ===');
+    console.log('currentPlan:', currentPlan);
+    console.log('activePlan:', activePlan);
+    console.log('plan:', plan);
+    console.log('userId:', userId);
+    console.log('filter:', filter);
+    
+    // userId yoksa veya plan yoksa plan öğünlerini döndürme
+    if (!userId || !plan?.weekly_plan) {
+      console.log('Early return - userId:', userId, 'plan?.weekly_plan:', plan?.weekly_plan);
+      return planMeals;
+    }
+    
+    // Plan'ın user_id'si mevcut userId ile eşleşmiyorsa plan öğünlerini döndürme
+    if (plan.user_id && plan.user_id !== userId) {
+      console.warn('Plan user_id mismatch:', plan.user_id, 'vs', userId);
       return planMeals;
     }
 
     const today = new Date();
+    console.log('Today:', today.toDateString());
     
     // Türkçe gün isimleri ile gün indeksleri eşleştirmesi
     const dayMapping: { [key: string]: number } = {
@@ -152,13 +176,16 @@ export default function MealsScreen() {
     const dayOfWeek = today.getDay(); // 0 = Pazar, 1 = Pazartesi, ...
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     startOfWeek.setDate(today.getDate() + mondayOffset);
+    console.log('Start of week:', startOfWeek.toDateString());
     
     Object.entries(plan.weekly_plan).forEach(([day, dayPlan]) => {
+      console.log(`Processing day: ${day}`, dayPlan);
       if (!dayPlan) return;
       
       // Bu günün bu haftaki tarihini hesapla
       const dayIndex = dayMapping[day.toLowerCase()];
       if (dayIndex === undefined) {
+        console.log(`Unknown day: ${day}`);
         return;
       }
       
@@ -172,33 +199,39 @@ export default function MealsScreen() {
         mealDate.setDate(startOfWeek.getDate() + (dayIndex - 1));
       }
       
+      console.log(`Day ${day} (${dayIndex}) -> Date: ${mealDate.toDateString()}`);
+      
       // Filter kontrolü
       if (filter === 'today') {
         // Sadece bugünkü plan öğünleri
         if (mealDate.toDateString() !== today.toDateString()) {
+          console.log(`Skipping ${day} - not today (${mealDate.toDateString()} vs ${today.toDateString()})`);
           return;
         }
+        console.log(`Including ${day} - matches today!`);
       } else if (filter === 'week') {
         // Bu hafta - tüm hafta boyunca
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 6);
         if (mealDate < startOfWeek || mealDate > endOfWeek) {
+          console.log(`Skipping ${day} - not in this week`);
           return;
         }
       }
 
       Object.entries(dayPlan).forEach(([mealType, meals]) => {
+        console.log(`Processing meal type: ${mealType}`, meals);
         if (Array.isArray(meals)) {
           meals.forEach((meal, index) => {
+            console.log(`Processing meal ${index}:`, meal);
             if (meal && meal.name) {
               const mealTypeFormatted = getMealTypeName(mealType);
               
-              // Benzersiz ID oluştur - tarih, gün, öğün tipi ve index ile
-              const mealNameSlug = meal.name?.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20) || 'meal';
-              // Sabit bir ID oluştur, böylece her render'da değişmez
-              const uniqueId = `plan-${mealDate.toISOString().split('T')[0]}-${day}-${mealType}-${index}-${mealNameSlug}`;
+              // Benzersiz ve tutarlı ID oluştur
+              const dateStr = mealDate.toISOString().split('T')[0];
+              const uniqueId = `plan-${plan.id || 'temp'}-${dateStr}-${day}-${mealType}-${index}`;
               
-              planMeals.push({
+              const planMeal = {
                 id: uniqueId,
                 name: meal.name,
                 meal_type: mealTypeFormatted as 'breakfast' | 'lunch' | 'dinner' | 'snack',
@@ -207,11 +240,11 @@ export default function MealsScreen() {
                 total_carbs: meal.carbs || 0,
                 total_fat: meal.fat || 0,
                 created_at: mealDate.toISOString(),
-                user_id: userId || '',
+                user_id: userId,
                 isFromPlan: true,
                 planDay: day,
                 planMealType: mealType,
-                source: 'plan',
+                source: 'plan' as const,
                 // Plan öğünlerinden gelen ek veriler
                 calories: meal.calories || 0,
                 protein: meal.protein || 0,
@@ -227,22 +260,36 @@ export default function MealsScreen() {
                 cook_time: meal.cook_time,
                 servings: meal.servings,
                 image_url: meal.image_url
-              });
+              };
+              
+              console.log('Adding plan meal:', planMeal);
+              planMeals.push(planMeal);
             }
           });
         }
       });
     });
+    
+    console.log('Final planMeals count:', planMeals.length);
+    console.log('=== END convertPlanMealsToMealData DEBUG ===');
     return planMeals;
   }, [currentPlan, activePlan, filter, userId]);
 
   const loadMeals = useCallback(async () => {
-    if (!userId) return;
+    console.log('=== loadMeals DEBUG ===');
+    console.log('userId:', userId);
+    console.log('filter:', filter);
+    
+    if (!userId) {
+      console.log('No userId, returning early');
+      return;
+    }
     
     setLoading(true);
     try {
       // Manuel eklenen öğünleri yükle - sadece bugün/bu hafta için
       const fetchedMeals = await MealService.getMeals(userId);
+      console.log('Fetched manual meals:', fetchedMeals.length);
       
       // Tarihe göre filtrele
       const today = new Date();
@@ -270,8 +317,11 @@ export default function MealsScreen() {
         }
       });
       
+      console.log('Filtered manual meals:', filteredMeals.length);
+      
       // Plan öğünlerini al
       const planMeals = convertPlanMealsToMealData();
+      console.log('Plan meals from convertPlanMealsToMealData:', planMeals.length);
       
       // Manuel öğünlere source ekle
       const manualMealsWithSource = filteredMeals.map(meal => ({
@@ -279,30 +329,37 @@ export default function MealsScreen() {
         source: 'manual' as const
       }));
       
-      // Benzersiz öğünleri birleştir - ID'ye göre tekrarları önle
-      const uniqueMealsMap = new Map<string, CombinedMeal>();
+      // Manuel öğünleri ve plan öğünlerini ayrı ayrı işle
+      const allMeals: CombinedMeal[] = [];
       
-      // Önce manuel öğünleri ekle (öncelik manuel öğünlerde)
+      // Manuel öğünleri ekle
       manualMealsWithSource.forEach(meal => {
-        if (meal.id) {
-          uniqueMealsMap.set(meal.id, meal);
+        if (meal.id && meal.name && meal.name.trim() !== '') {
+          console.log('Adding manual meal:', meal.name);
+          allMeals.push(meal);
         }
       });
       
-      // Plan öğünlerini ekle - sadece aynı ID yoksa
+      // Plan öğünlerini ekle - sadece geçerli user_id varsa ve boş değilse
       planMeals.forEach(meal => {
-        if (meal.id && !uniqueMealsMap.has(meal.id)) {
-          uniqueMealsMap.set(meal.id, meal);
+        if (meal.id && meal.name && meal.name.trim() !== '' && meal.user_id && meal.user_id === userId) {
+          console.log('Adding plan meal:', meal.name);
+          allMeals.push(meal);
+        } else {
+          console.log('Skipping plan meal:', meal.name, 'user_id:', meal.user_id, 'expected:', userId);
         }
       });
       
-      // Map'ten array'e çevir ve sırala
-      const combinedMeals = Array.from(uniqueMealsMap.values()).sort((a, b) => {
+      console.log('Total combined meals:', allMeals.length);
+      
+      // Tarihe göre sırala (en yeni önce)
+      const combinedMeals = allMeals.sort((a, b) => {
         const dateA = new Date(a.created_at || 0).getTime();
         const dateB = new Date(b.created_at || 0).getTime();
         return dateB - dateA;
       });
       
+      console.log('Final sorted meals:', combinedMeals.length);
       setMeals(combinedMeals);
 
       // Günlük toplamları hesapla
@@ -313,15 +370,19 @@ export default function MealsScreen() {
           const todayStr = new Date().toDateString();
           return mealDate === todayStr;
         });
+        console.log('Today meals for totals:', todayMeals.length);
         const totals = MealService.calculateDailyTotals(todayMeals);
+        console.log('Daily totals:', totals);
         setDailyTotals(totals);
       }
     } catch (error: any) {
+      console.error('Error in loadMeals:', error);
       Alert.alert('Hata', error.message || 'Öğünler yüklenemedi');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
+    console.log('=== END loadMeals DEBUG ===');
   }, [userId, filter, convertPlanMealsToMealData]);
 
   useEffect(() => {
@@ -440,10 +501,20 @@ export default function MealsScreen() {
         colors={isDark ? ['#1E3A8A', '#1E40AF', '#2563EB'] : ['#10B981', '#059669']}
         style={styles.header}
       >
-        <Text style={styles.title}>Öğünlerim</Text>
-        <Text style={styles.subtitle}>
-          {filter === 'today' ? 'Bugünkü öğünlerin' : 'Bu haftaki öğünlerin'}
-        </Text>
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation?.goBack()}
+          >
+            <MaterialIcons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.title}>Öğünlerim</Text>
+            <Text style={styles.subtitle}>
+              {filter === 'today' ? 'Bugünkü öğünlerin' : 'Bu haftaki öğünlerin'}
+            </Text>
+          </View>
+        </View>
       </LinearGradient>
 
       {/* Filter Tabs */}
@@ -994,6 +1065,17 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#4CAF50',
     padding: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backButton: {
+    marginRight: 15,
+    padding: 5,
+  },
+  headerTextContainer: {
+    flex: 1,
   },
   title: {
     fontSize: 24,

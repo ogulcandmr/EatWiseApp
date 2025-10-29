@@ -67,6 +67,28 @@ export class PlanService {
   }
 
   /**
+   * ID'ye göre plan getir
+   */
+  static async getPlanById(planId: string): Promise<DietPlan | null> {
+    try {
+      const { data, error } = await supabase
+        .from('diet_plans')
+        .select('*')
+        .eq('id', planId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      return data || null;
+    } catch (error: any) {
+      console.error('Plan getirme hatası:', error);
+      throw new Error('Plan getirilemedi');
+    }
+  }
+
+  /**
    * Kullanıcının tüm planlarını getir
    */
   static async getUserPlans(userId: string): Promise<DietPlan[]> {
@@ -259,6 +281,17 @@ export class PlanService {
       // AI planını DietPlan formatına dönüştür
       const weeklyPlan: WeeklyPlan = {};
       
+      // İngilizce gün isimlerini Türkçe'ye dönüştür
+      const dayMapping: { [key: string]: string } = {
+        'monday': 'pazartesi',
+        'tuesday': 'sali',
+        'wednesday': 'carsamba',
+        'thursday': 'persembe',
+        'friday': 'cuma',
+        'saturday': 'cumartesi',
+        'sunday': 'pazar'
+      };
+      
       Object.entries(generatedPlan.weekly_plan).forEach(([day, dayPlan]: [string, any]) => {
         // Güvenlik kontrolü: dayPlan'ın gerekli alanları olduğundan emin ol
         if (!dayPlan || typeof dayPlan !== 'object') {
@@ -266,7 +299,10 @@ export class PlanService {
           return;
         }
 
-        weeklyPlan[day] = {
+        // İngilizce gün ismini Türkçe'ye dönüştür
+        const turkishDay = dayMapping[day.toLowerCase()] || day;
+
+        weeklyPlan[turkishDay] = {
           breakfast: Array.isArray(dayPlan.breakfast) ? dayPlan.breakfast.map((meal: any) => ({
             id: meal.id || Math.random().toString(36).substr(2, 9),
             name: meal.name || 'Bilinmeyen Yemek',

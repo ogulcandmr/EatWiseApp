@@ -19,9 +19,13 @@ import { RecipeService } from '../services/recipeService';
 import { Recipe, RecipeMode } from '../types/recipe';
 import VoiceAssistantModal from '../components/VoiceAssistantModal';
 import { useAppStore } from '../store/useAppStore';
+import { AuthService } from '../services/authService';
+import { PlanService } from '../services/planService';
+import { usePlans } from '../hooks/usePlans';
 
 interface RouteParams {
   initialIngredients?: string;
+  mealDescription?: string; // Öğün açıklaması
   mealData?: {
     id?: string; // Mevcut öğün ID'si
     name: string;
@@ -81,7 +85,9 @@ export default function IngredientsToRecipeScreen({ navigation, route }: Props =
     setCurrentPlan 
   } = useAppStore();
   
-  const [ingredients, setIngredients] = useState(params?.initialIngredients || '');
+  const [ingredients, setIngredients] = useState(
+    params?.initialIngredients || params?.mealDescription || ''
+  );
   const [selectedMode, setSelectedMode] = useState<RecipeMode>('normal');
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(false);
@@ -143,95 +149,221 @@ export default function IngredientsToRecipeScreen({ navigation, route }: Props =
     setSelectedMode('normal');
   };
 
-  const handleAddToPlan = (recipe: Recipe) => {
-    console.log('🚀 handleAddToPlan çalıştı');
-    console.log('📝 recipe:', recipe);
-    console.log('📋 params:', params);
-    console.log('🗂️ currentPlan:', currentPlan);
-    
-    if (!navigation) return;
+  const { plans, activePlan: activeUserPlan } = usePlans();
 
-    // Tarif için MealPlan objesi oluştur
-    const mealPlan = {
-      id: Date.now().toString(),
-      name: recipe.title,
-      calories: recipe.calories,
-      protein: recipe.protein,
-      carbs: recipe.carbs,
-      fat: recipe.fats,
-      description: `${recipe.ingredients.join(', ')}`,
-      ingredients: recipe.ingredients,
-      instructions: recipe.steps
-    };
-
-    // Eğer gün ve öğün bilgisi varsa direkt ekle
-    if (params?.selectedDay && params?.selectedMealType) {
-      console.log('✅ Tarif plana ekleniyor:', {
-        day: params.selectedDay,
-        mealType: params.selectedMealType,
-        recipe: mealPlan,
-        currentPlan: currentPlan ? 'Mevcut plan' : 'Yeni plan oluşturulacak',
-        planData: params,
-        updateExisting: params.updateExistingMeal
-      });
-
-      // Eğer mevcut öğün güncelleniyor ise
-      if (params.updateExistingMeal && params.mealData?.id) {
-        // Mevcut öğünü güncelle
-        updateMealById(params.mealData.id, {
-          name: mealPlan.name,
-          calories: mealPlan.calories,
-          protein: mealPlan.protein,
-          carbs: mealPlan.carbs,
-          fat: mealPlan.fat,
-          description: mealPlan.description,
-          ingredients: mealPlan.ingredients,
-          instructions: mealPlan.instructions
-        });
-        
-        setShowRecipeModal(false);
-        navigation.navigate('editPlan');
-        Alert.alert('Başarılı', 'Öğün tarifi güncellendi!');
+  const handleAddToPlan = async (recipe: Recipe) => {
+    try {
+      // Kullanıcıyı al
+      const user = await AuthService.getCurrentUser();
+      if (!user) {
+        Alert.alert('Hata', 'Kullanıcı bilgisi bulunamadı');
         return;
       }
 
-      // Plan bilgilerini DietPlan formatına çevir - önce currentPlanState'i kontrol et
-      const currentPlanState = params.currentPlanState;
-      const planData = {
-        name: currentPlanState?.planName || params.planName || 'Yeni Plan',
-        goal: (currentPlanState?.goal as 'weight_loss' | 'muscle_gain' | 'maintenance' | 'weight_gain') || (params.goal as 'weight_loss' | 'muscle_gain' | 'maintenance' | 'weight_gain') || 'maintenance',
-        daily_calories: currentPlanState?.dailyCalories || params.dailyCalories || 2000,
-        daily_protein: currentPlanState?.dailyProtein || params.dailyProtein || 150,
-        daily_carbs: currentPlanState?.dailyCarbs || params.dailyCarbs || 250,
-        daily_fat: currentPlanState?.dailyFat || params.dailyFat || 65,
-        weekly_plan: currentPlanState?.weeklyPlan || params.weeklyPlan
+      // Önce currentPlan'ı kontrol et, sonra activePlan'ı
+      const planToUse = currentPlan || activeUserPlan || plans.find(plan => plan.is_active);
+      
+      if (!planToUse) {
+        Alert.alert('Hata', 'Aktif plan bulunamadı. Önce bir plan oluşturun.');
+        return;
+      }
+
+      // Gün ve öğün türü seçimi için modal göster
+      Alert.alert(
+        'Plana Ekle',
+        'Bu tarifi hangi güne ve öğüne eklemek istiyorsunuz?',
+        [
+          {
+            text: 'İptal',
+            style: 'cancel'
+          },
+          {
+            text: 'Seç',
+            onPress: () => showDayMealSelector(recipe, planToUse)
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Plan ekleme hatası:', error);
+      Alert.alert('Hata', 'Tarif plana eklenirken bir hata oluştu');
+    }
+  };
+
+  const showDayMealSelector = (recipe: Recipe, activePlan: any) => {
+    // Kullanıcının seçtiği günü kullan, yoksa bugünü kullan
+    let selectedDay = params?.selectedDay;
+    
+    if (!selectedDay) {
+      const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long' }).toLowerCase();
+      const dayMap: { [key: string]: string } = {
+        'pazartesi': 'pazartesi',
+        'salı': 'sali', 
+        'çarşamba': 'carsamba',
+        'perşembe': 'persembe',
+        'cuma': 'cuma',
+        'cumartesi': 'cumartesi',
+        'pazar': 'pazar'
+      };
+      selectedDay = dayMap[today] || 'pazartesi';
+    }
+    
+    // Kullanıcının seçtiği öğün türünü kullan, yoksa seçim yap
+    const selectedMealType = params?.selectedMealType;
+    
+    if (selectedMealType) {
+      // Öğün türü zaten seçilmişse direkt ekle
+      addRecipeToActivePlan(recipe, activePlan, selectedDay, selectedMealType);
+    } else {
+      // Öğün türü seçilmemişse kullanıcıya sor
+      Alert.alert(
+        'Öğün Seçin',
+        'Bu tarifi hangi öğüne eklemek istiyorsunuz?',
+        [
+          {
+            text: 'Kahvaltı',
+            onPress: () => addRecipeToActivePlan(recipe, activePlan, selectedDay, 'breakfast')
+          },
+          {
+            text: 'Öğle',
+            onPress: () => addRecipeToActivePlan(recipe, activePlan, selectedDay, 'lunch')
+          },
+          {
+            text: 'Akşam',
+            onPress: () => addRecipeToActivePlan(recipe, activePlan, selectedDay, 'dinner')
+          },
+          {
+            text: 'Atıştırmalık',
+            onPress: () => addRecipeToActivePlan(recipe, activePlan, selectedDay, 'snacks')
+          }
+        ]
+      );
+    }
+  };
+
+  const addRecipeToActivePlan = async (recipe: Recipe, planToUse: any, selectedDay: string, selectedMealType: string) => {
+    try {
+      // Tarifin yapılış talimatlarını açıklama olarak kullan
+      const recipeDescription = recipe.steps && recipe.steps.length > 0 
+        ? recipe.steps.join(' • ') 
+        : `${recipe.title} tarifi`;
+      
+      const mealPlan = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: recipe.title,
+        description: recipeDescription,
+        calories: recipe.calories,
+        protein: recipe.protein,
+        carbs: recipe.carbs,
+        fat: recipe.fats,
+        ingredients: recipe.ingredients,
+        instructions: recipe.steps
       };
 
-      // Global store'a tarifi ekle - plan bilgilerini de geç
-      addRecipeToMeal(params.selectedDay!, params.selectedMealType as any, mealPlan, planData);
+      const updatedPlan = { ...planToUse };
+      if (!updatedPlan.weekly_plan) {
+        updatedPlan.weekly_plan = {
+          pazartesi: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+          sali: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+          carsamba: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+          persembe: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+          cuma: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+          cumartesi: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+          pazar: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+        };
+      }
       
-      setShowRecipeModal(false);
-      
-      // Plan edit ekranına geri dön
-      navigation.navigate('editPlan');
-      
-      Alert.alert('Başarılı', 'Tarif plana eklendi!');
-      return;
-    }
+      if (!updatedPlan.weekly_plan[selectedDay]) {
+        updatedPlan.weekly_plan[selectedDay] = {
+          breakfast: [],
+          lunch: [],
+          dinner: [],
+          snacks: []
+        };
+      }
 
-    // Eğer gün ve öğün bilgisi yoksa, kullanıcıdan plan bilgilerini al
+      const dayPlan = updatedPlan.weekly_plan[selectedDay];
+      if (selectedMealType === 'snacks') {
+        dayPlan.snacks = dayPlan.snacks || [];
+        dayPlan.snacks.push(mealPlan);
+      } else {
+        (dayPlan as any)[selectedMealType].push(mealPlan);
+      }
+
+      if (planToUse.id) {
+        await PlanService.updatePlan(planToUse.id, updatedPlan);
+      } else {
+        // Eğer plan henüz kaydedilmemişse, currentPlan'ı güncelle
+        setCurrentPlan(updatedPlan);
+      }
+      
+      // Tarif başarıyla eklendikten sonra otomatik olarak plan sayfasına yönlendir
+      setShowRecipeModal(false); // Modal'ı kapat
+      
+      Alert.alert(
+        'Başarılı', 
+        'Tarif plana eklendi! Plan sayfasına yönlendiriliyorsunuz.',
+        [
+          {
+            text: 'Tamam',
+            onPress: () => {
+              // Plan sayfasına geri dön
+              if (navigation && navigation.goBack) {
+                navigation.goBack();
+              } else if (navigation && navigation.navigate) {
+                navigation.navigate('plan');
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Plan güncelleme hatası:', error);
+      Alert.alert('Hata', 'Tarif plana eklenirken bir hata oluştu');
+    }
+  };
+
+  const handleOldAddToPlan = (recipe: Recipe) => {
+    if (!navigation) return;
+
+    // Mevcut plan bilgilerini params'dan oluştur
+    const currentPlanData = {
+      name: params?.planName || 'Yeni Plan',
+      goal: params?.goal || 'maintenance',
+      daily_calories: params?.dailyCalories || 2000,
+      daily_protein: params?.dailyProtein || 100,
+      daily_carbs: params?.dailyCarbs || 250,
+      daily_fat: params?.dailyFat || 70,
+      weekly_plan: params?.weeklyPlan || {},
+    };
+
     Alert.alert(
-      'Plan Seçimi',
+      'Plana Ekle',
       'Bu tarifi hangi plana eklemek istiyorsunuz?',
       [
         {
-          text: 'İptal',
-          style: 'cancel'
+          text: 'Mevcut Plan',
+          onPress: () => {
+            // Mevcut plana ekle - plan bilgilerini geç
+            navigation.navigate('editPlan', {
+              plan: currentPlanData,
+              selectedRecipe: {
+                name: recipe.title,
+                calories: recipe.calories,
+                protein: recipe.protein,
+                carbs: recipe.carbs,
+                fat: recipe.fats,
+                ingredients: recipe.ingredients,
+                instructions: recipe.steps
+              },
+              selectedDay: params?.selectedDay,
+              selectedMealType: params?.selectedMealType,
+            });
+          },
         },
         {
           text: 'Plan Seç',
           onPress: () => {
-            // Plan seçim ekranına git
+            // Plan seçme ekranına git
             navigation.navigate('editPlan', {
               selectedRecipe: {
                 name: recipe.title,
@@ -239,13 +371,16 @@ export default function IngredientsToRecipeScreen({ navigation, route }: Props =
                 protein: recipe.protein,
                 carbs: recipe.carbs,
                 fat: recipe.fats,
-                description: `${recipe.ingredients.join(', ')}`,
                 ingredients: recipe.ingredients,
-                steps: recipe.steps
-              }
+                instructions: recipe.steps
+              },
             });
-          }
-        }
+          },
+        },
+        {
+          text: 'İptal',
+          style: 'cancel',
+        },
       ]
     );
   };
@@ -493,9 +628,9 @@ export default function IngredientsToRecipeScreen({ navigation, route }: Props =
                 {/* Add to Plan Button */}
                 <View style={styles.modalActions}>
                   <TouchableOpacity
-                    style={styles.addToPlanButton}
-                    onPress={() => handleAddToPlan(selectedRecipe)}
-                  >
+                  style={styles.addToPlanButton}
+                  onPress={() => handleAddToPlan(selectedRecipe)}
+                >
                     <LinearGradient
                       colors={['#4CAF50', '#45a049']}
                       style={styles.addToPlanButtonGradient}

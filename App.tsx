@@ -43,12 +43,43 @@ function AppContent() {
     const { data: { subscription } } = AuthService.onAuthStateChanged(async (supabaseUser) => {
       if (supabaseUser) {
         try {
-          const userProfile = await AuthService.getUserProfile(supabaseUser.id);
-          setUser(userProfile);
-          setIsAuthenticated(true);
+          let userProfile = await AuthService.getUserProfile(supabaseUser.id);
           
-          // Kullanıcı giriş yaptıktan sonra aktif planı yükle
-          await loadActivePlan(supabaseUser.id);
+          // Eğer profil bulunamazsa, yeni profil oluştur
+          if (!userProfile) {
+            console.log('Kullanıcı profili bulunamadı, yeni profil oluşturuluyor...');
+            
+            // Doğrudan veritabanında profil oluştur
+            const { supabase } = await import('./src/services/supabase');
+            const { error: profileError } = await supabase
+              .from('users')
+              .insert([{
+                id: supabaseUser.id,
+                email: supabaseUser.email,
+                name: supabaseUser.user_metadata?.name || 'Kullanıcı',
+                plan_type: 'free',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              }]);
+
+            if (profileError) {
+              console.error('Profil oluşturulamadı:', profileError);
+            } else {
+              // Tekrar profil getirmeyi dene
+              userProfile = await AuthService.getUserProfile(supabaseUser.id);
+            }
+          }
+          
+          if (userProfile) {
+            setUser(userProfile);
+            setIsAuthenticated(true);
+            
+            // Kullanıcı giriş yaptıktan sonra aktif planı yükle
+            await loadActivePlan(supabaseUser.id);
+          } else {
+            console.error('Profil oluşturulamadı');
+            setIsAuthenticated(false);
+          }
         } catch (error) {
           console.error('Kullanıcı profili yüklenemedi:', error);
           setIsAuthenticated(false);
@@ -100,7 +131,7 @@ function AppContent() {
       case 'home':
         return <HomeScreen {...screenProps} />;
       case 'meals':
-        return <MealsScreen />;
+        return <MealsScreen {...screenProps} />;
       case 'camera':
         return <PhotoAnalysisScreen />;
       case 'recipes':
@@ -110,11 +141,23 @@ function AppContent() {
       case 'profile':
         return <ProfileScreen />;
       case 'explore':
-        return <ExploreScreen />;
+        return <ExploreScreen {...screenProps} />;
       case 'plan':
         return <PlanScreen {...screenProps} />;
       case 'editPlan':
-        return <EditPlanScreen {...screenProps} route={{ params: navigationParams }} />;
+        return <EditPlanScreen 
+          planId={navigationParams?.plan?.id}
+          plan={navigationParams?.plan}
+          recipeData={navigationParams?.recipeData}
+          selectedRecipe={navigationParams?.selectedRecipe}
+          selectedDay={navigationParams?.selectedDay}
+          selectedMealType={navigationParams?.selectedMealType}
+          onNavigateBack={() => setCurrentScreen('plan')}
+          onNavigateToRecipe={(params) => {
+            setNavigationParams(params);
+            setCurrentScreen('ingredientsToRecipe');
+          }}
+        />;
       case 'planDetail':
         return <PlanDetailScreen {...screenProps} route={{ params: navigationParams }} />;
       case 'recipesList':

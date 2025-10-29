@@ -48,7 +48,54 @@ export const useAuth = () => {
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // Eğer kullanıcı profili yoksa (PGRST116 hatası), yeni profil oluştur
+        if (error.code === 'PGRST116') {
+          console.log('Kullanıcı profili bulunamadı, yeni profil oluşturuluyor...');
+          
+          // Supabase auth'dan kullanıcı bilgilerini al
+          const { data: authUser } = await supabase.auth.getUser();
+          
+          if (authUser.user) {
+            // Yeni profil oluştur
+            const { data: newProfile, error: insertError } = await supabase
+              .from('users')
+              .insert([{
+                id: userId,
+                email: authUser.user.email,
+                name: authUser.user.user_metadata?.name || 'Kullanıcı',
+                plan_type: 'free',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              }])
+              .select()
+              .single();
+
+            if (insertError) {
+              console.error('Yeni profil oluşturulamadı:', insertError);
+              throw insertError;
+            }
+
+            // Yeni oluşturulan profili kullan
+            setUser({
+              id: newProfile.id,
+              email: newProfile.email,
+              name: newProfile.name,
+              age: newProfile.age,
+              weight: newProfile.weight,
+              height: newProfile.height,
+              gender: newProfile.gender,
+              activityLevel: newProfile.activity_level,
+              goal: newProfile.goal,
+              allergies: newProfile.allergies || [],
+              dislikes: newProfile.dislikes || [],
+              planType: newProfile.plan_type
+            });
+            return;
+          }
+        }
+        throw error;
+      }
 
       setUser({
         id: data.id,
@@ -65,7 +112,8 @@ export const useAuth = () => {
         planType: data.plan_type
       });
     } catch (error) {
-      console.error('Kullanıcı profili yüklenemedi:', error);
+      console.error('Profil getirilirken hata:', error);
+      setUser(null);
     }
   };
 

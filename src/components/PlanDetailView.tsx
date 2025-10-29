@@ -28,8 +28,33 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
 }) => {
   const { isDark } = useTheme();
   const { user } = useAuth();
-  const [selectedDay, setSelectedDay] = useState(0);
+  
+  // Bugünün gününü tespit et ve selectedDay'i buna göre ayarla
+  const getTodayIndex = () => {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0: Pazar, 1: Pazartesi, ..., 6: Cumartesi
+    // JavaScript'te Pazar 0, bizde Pazartesi 0 olduğu için dönüştürme yapıyoruz
+    return dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Pazar -> 6, Pazartesi -> 0, ..., Cumartesi -> 5
+  };
+  
+  const [selectedDay, setSelectedDay] = useState(getTodayIndex());
   const [completedMeals, setCompletedMeals] = useState<Set<string>>(new Set());
+
+  // Güvenlik kontrolü: plan prop'unun varlığını kontrol et
+  if (!plan || !plan.weekly_plan) {
+    return (
+      <View style={[styles.container, isDark && styles.containerDark]}>
+        <View style={styles.emptyContainer}>
+          <Ionicons name="calendar-outline" size={64} color={isDark ? '#666' : '#ccc'} />
+          <Text style={[styles.emptyText, { color: isDark ? '#ccc' : '#666' }]}>
+            Plan verisi bulunamadı
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+
 
   // Tamamlanan öğünleri yükle
   useEffect(() => {
@@ -70,23 +95,41 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const dayKeys = ['pazartesi', 'sali', 'carsamba', 'persembe', 'cuma', 'cumartesi', 'pazar'];
 
   const getCurrentDayPlan = (): DayPlan | null => {
+    // Güvenlik kontrolleri
+    if (!plan || !plan.weekly_plan) {
+      return null;
+    }
+    if (selectedDay < 0 || selectedDay >= dayKeys.length) {
+      return null;
+    }
+    
     const dayKey = dayKeys[selectedDay];
-    return plan.weekly_plan[dayKey] || null;
+    if (!dayKey) {
+      return null;
+    }
+    
+    const dayPlan = plan.weekly_plan[dayKey];
+    return dayPlan || null;
   };
 
   const getMealsByType = (mealType: keyof DayPlan): MealPlan[] => {
     const currentDayPlan = getCurrentDayPlan();
     if (!currentDayPlan) return [];
-    return currentDayPlan[mealType] || [];
+    const meals = currentDayPlan[mealType];
+    // Güvenlik kontrolü: meals undefined veya null ise boş array döndür
+    if (!meals || !Array.isArray(meals)) return [];
+    return meals;
   };
 
   const isMealCompleted = (mealId: string, mealType: string) => {
+    // Güvenlik kontrolü
+    if (!mealId || !mealType || !completedMeals) return false;
     const mealKey = `${mealType}-${mealId}`;
     return completedMeals.has(mealKey);
   };
 
   const handleMealToggle = async (meal: MealPlan, mealType: string) => {
-    if (!user?.id || !plan.id) return;
+    if (!user?.id || !plan.id || !meal || !meal.id || !mealType) return;
 
     const mealKey = `${mealType}-${meal.id}`;
     const isCompleted = completedMeals.has(mealKey);
@@ -134,19 +177,22 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     if (!currentDayPlan) return { total: 0, completed: 0 };
     
     const mealTypesWithMeals = [
-      { type: 'breakfast', meals: currentDayPlan.breakfast },
-      { type: 'lunch', meals: currentDayPlan.lunch },
-      { type: 'dinner', meals: currentDayPlan.dinner },
-      { type: 'snacks', meals: currentDayPlan.snacks }
+      { type: 'breakfast', meals: currentDayPlan.breakfast || [] },
+      { type: 'lunch', meals: currentDayPlan.lunch || [] },
+      { type: 'dinner', meals: currentDayPlan.dinner || [] },
+      { type: 'snacks', meals: currentDayPlan.snacks || [] }
     ];
     
     let totalMeals = 0;
     let completedCount = 0;
     
     mealTypesWithMeals.forEach(({ type, meals }) => {
+      // Güvenlik kontrolü: meals array'inin varlığını kontrol et
+      if (!Array.isArray(meals)) return;
+      
       totalMeals += meals.length;
       completedCount += meals.filter(meal => 
-        isMealCompleted(meal.id, type)
+        meal && meal.id && isMealCompleted(meal.id, type)
       ).length;
     });
     
@@ -239,12 +285,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                   {mealType.label}
                 </Text>
                 <Text style={[styles.mealCount, { color: isDark ? '#B0B0B0' : '#7F8C8D' }]}>
-                  {meals.filter(meal => isMealCompleted(meal.id, mealType.key)).length}/{meals.length}
+                  {meals && Array.isArray(meals) ? 
+                    `${meals.filter(meal => meal && meal.id && isMealCompleted(meal.id, mealType.key)).length}/${meals.length}` : 
+                    '0/0'
+                  }
                 </Text>
               </View>
 
               {/* Meals */}
               {meals.map((meal) => {
+                // Güvenlik kontrolü: meal objesi ve gerekli alanları kontrol et
+                if (!meal || !meal.id) return null;
                 const isCompleted = isMealCompleted(meal.id, mealType.key);
                 
                 return (
