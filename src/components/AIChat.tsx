@@ -10,12 +10,18 @@ import {
   KeyboardAvoidingView,
   Platform,
   Animated,
-  Alert,
+  Dimensions,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient'; // Gradient eklendi
+import LottieView from 'lottie-react-native'; // Animasyon eklendi
 import { useTheme } from '../context/ThemeContext';
 import { colors, shadows } from '../theme';
 import { AIChatService, ChatMessage } from '../services/aiChatService';
+
+// NOT: AuthScreen'deki dosyaları kullanıyoruz (src/assets/animations/)
+// robot-welcome.json -> Header'daki robot
+// robot-loading.json -> Düşünme/Yazma efekti
 
 interface Message {
   id: string;
@@ -29,26 +35,53 @@ interface AIChatProps {
   onClose: () => void;
 }
 
+const { width } = Dimensions.get('window');
+
 const AIChat: React.FC<AIChatProps> = ({ visible, onClose }) => {
   const { isDark } = useTheme();
+  
+  // Mesaj State'i
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: 'Merhaba! Ben EatWise AI asistanınızım. Beslenme, egzersiz ve sağlık konularında size yardımcı olabilirim. Nasıl yardımcı olabilirim?',
+      text: 'Merhaba! Ben EatWise AI. Senin kişisel beslenme asistanınım. Bugün sana nasıl yardımcı olabilirim?',
       isUser: false,
       timestamp: new Date(),
     },
   ]);
+  
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  
+  // Ref'ler
   const scrollViewRef = useRef<ScrollView>(null);
+  const headerRobotRef = useRef<LottieView>(null);
 
-  const sendMessage = async () => {
-    if (inputText.trim() === '') return;
+  // Modal açıldığında robotu oynat
+  useEffect(() => {
+    if (visible) {
+      setTimeout(() => {
+         headerRobotRef.current?.play();
+         // En aşağı kaydır
+         scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [visible]);
+
+  // Yeni mesaj gelince aşağı kaydır
+  useEffect(() => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  }, [messages, isTyping]);
+
+
+  const sendMessage = async (textToSend: string = inputText) => {
+    if (textToSend.trim() === '') return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      text: inputText.trim(),
+      text: textToSend.trim(),
       isUser: true,
       timestamp: new Date(),
     };
@@ -58,21 +91,15 @@ const AIChat: React.FC<AIChatProps> = ({ visible, onClose }) => {
     setIsTyping(true);
 
     try {
-      // Mesaj geçmişini ChatMessage formatına çevir
       const chatHistory: ChatMessage[] = messages
-        .filter(msg => !msg.text.includes('Merhaba! Ben EatWise AI')) // İlk karşılama mesajını hariç tut
+        .filter(msg => !msg.text.includes('Merhaba! Ben EatWise AI'))
         .map(msg => ({
           role: msg.isUser ? 'user' : 'assistant',
           content: msg.text,
         }));
 
-      // Yeni kullanıcı mesajını ekle
-      chatHistory.push({
-        role: 'user',
-        content: userMessage.text,
-      });
+      chatHistory.push({ role: 'user', content: userMessage.text });
 
-      // OpenAI API çağrısı yap
       const aiResponseText = await AIChatService.sendMessage(chatHistory);
 
       const aiResponse: Message = {
@@ -83,32 +110,26 @@ const AIChat: React.FC<AIChatProps> = ({ visible, onClose }) => {
       };
       
       setMessages(prev => [...prev, aiResponse]);
-      setIsTyping(false);
     } catch (error) {
       console.error('AI Chat hatası:', error);
-      
-      // Hata durumunda fallback mesaj
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
-        text: 'Üzgünüm, şu anda bir teknik sorun yaşıyorum. Lütfen daha sonra tekrar deneyin.',
+        text: 'Üzgünüm, bağlantımda bir sorun var. Birazdan tekrar deneyebilir misin?',
         isUser: false,
         timestamp: new Date(),
       };
-      
       setMessages(prev => [...prev, errorResponse]);
-      setIsTyping(false);
+    } finally {
+        setIsTyping(false);
     }
   };
 
-  const quickQuestions = AIChatService.getQuickQuestions();
-
-  useEffect(() => {
-    if (visible) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [messages, visible]);
+  const quickQuestions = [
+    "Bugün ne yemeliyim?",
+    "Bu öğün kaç kalori?",
+    "Su içmeyi hatırlat",
+    "Sağlıklı atıştırmalık önerisi"
+  ];
 
   return (
     <Modal
@@ -117,211 +138,196 @@ const AIChat: React.FC<AIChatProps> = ({ visible, onClose }) => {
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        style={[styles.container, isDark && styles.containerDark]}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        {/* Header */}
+      <View style={[styles.container, isDark && styles.containerDark]}>
+        
+        {/* MODERN HEADER */}
         <View style={[styles.header, isDark && styles.headerDark]}>
           <View style={styles.headerLeft}>
-            <View style={styles.aiAvatar}>
-              <MaterialIcons name="psychology" size={24} color="white" />
+            <View style={styles.robotAvatarContainer}>
+                {/* AuthScreen'deki robotu buraya da koyduk */}
+                <LottieView
+                    ref={headerRobotRef}
+                    source={require('../../assets/animations/robot-welcome.json')}
+                    autoPlay
+                    loop
+                    style={{ width: 60, height: 60 }}
+                />
             </View>
-            <View>
+            <View style={styles.headerInfo}>
               <Text style={[styles.headerTitle, isDark && styles.textDark]}>
                 EatWise AI
               </Text>
-              <Text style={[styles.headerSubtitle, isDark && styles.textSecondaryDark]}>
-                Beslenme Asistanı
-              </Text>
+              <View style={styles.statusContainer}>
+                <View style={styles.onlineDot} />
+                <Text style={[styles.headerSubtitle, isDark && styles.textSecondaryDark]}>
+                  Çevrimiçi
+                </Text>
+              </View>
             </View>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <MaterialIcons 
-              name="close" 
-              size={24} 
-              color={isDark ? colors.dark.text.primary : '#333'} 
+            <Ionicons 
+              name="close-circle" 
+              size={32} 
+              color={isDark ? colors.neutral[400] : colors.neutral[300]} 
             />
           </TouchableOpacity>
         </View>
 
-        {/* Messages */}
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+        
+        {/* MESAJ ALANI */}
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
+          contentContainerStyle={{ paddingBottom: 20 }}
           showsVerticalScrollIndicator={false}
         >
           {messages.map((message) => (
             <View
               key={message.id}
               style={[
-                styles.messageContainer,
-                message.isUser ? styles.userMessage : styles.aiMessage,
+                styles.messageRow,
+                message.isUser ? styles.userMessageRow : styles.aiMessageRow,
               ]}
             >
-              <View
-                style={[
-                  styles.messageBubble,
-                  message.isUser 
-                    ? styles.userBubble 
-                    : [styles.aiBubble, isDark && styles.aiBubbleDark],
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.messageText,
-                    message.isUser 
-                      ? styles.userMessageText 
-                      : [styles.aiMessageText, isDark && styles.textDark],
-                  ]}
-                >
-                  {message.text}
-                </Text>
-              </View>
+              {/* Eğer AI mesajıysa soluna minik bir ikon koyalım */}
+              {!message.isUser && (
+                  <View style={styles.miniAiIcon}>
+                       <MaterialIcons name="smart-toy" size={16} color="white" />
+                  </View>
+              )}
+
+              {/* Baloncuk Tasarımı */}
+              {message.isUser ? (
+                 // KULLANICI MESAJI: Gradient Arkaplan (AuthScreen renkleri)
+                 <LinearGradient
+                    colors={['#10B981', '#059669', '#047857']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.messageBubble, styles.userBubble]}
+                 >
+                    <Text style={styles.userMessageText}>{message.text}</Text>
+                 </LinearGradient>
+              ) : (
+                 // AI MESAJI: Sade
+                 <View style={[styles.messageBubble, styles.aiBubble, isDark && styles.aiBubbleDark]}>
+                    <Text style={[styles.aiMessageText, isDark && styles.textDark]}>{message.text}</Text>
+                 </View>
+              )}
             </View>
           ))}
 
+          {/* Typing Indicator (Robot Loading) */}
           {isTyping && (
-            <View style={[styles.messageContainer, styles.aiMessage]}>
-              <View style={[styles.messageBubble, styles.aiBubble, isDark && styles.aiBubbleDark]}>
-                <Text style={[styles.typingText, isDark && styles.textDark]}>
-                  AI yazıyor...
-                </Text>
+            <View style={[styles.messageRow, styles.aiMessageRow]}>
+              <View style={styles.miniAiIcon}>
+                   <MaterialIcons name="smart-toy" size={16} color="white" />
+              </View>
+              <View style={[styles.messageBubble, styles.aiBubble, isDark && styles.aiBubbleDark, { paddingVertical: 8, paddingHorizontal: 12 }]}>
+                 <LottieView
+                    source={require('../../assets/animations/robot-loading.json')} 
+                    autoPlay
+                    loop
+                    style={{ width: 40, height: 25 }}
+                 />
               </View>
             </View>
           )}
 
-          {/* Quick Questions */}
-          {messages.length === 1 && (
+          {/* Hızlı Sorular (Chips) */}
+          {messages.length === 1 && !isTyping && (
             <View style={styles.quickQuestionsContainer}>
-              <Text style={[styles.quickQuestionsTitle, isDark && styles.textDark]}>
-                Hızlı Sorular:
+              <Text style={[styles.quickQuestionsTitle, isDark && styles.textSecondaryDark]}>
+                Hızlıca sorabilirsin:
               </Text>
-              {quickQuestions.map((question, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[styles.quickQuestionButton, isDark && styles.quickQuestionButtonDark]}
-                  onPress={async () => {
-                    // Hızlı soruyu direkt mesaj olarak gönder
-                    const userMessage: Message = {
-                      id: Date.now().toString(),
-                      text: question,
-                      isUser: true,
-                      timestamp: new Date(),
-                    };
-
-                    setMessages(prev => [...prev, userMessage]);
-                    setIsTyping(true);
-
-                    try {
-                      // Mesaj geçmişini ChatMessage formatına çevir
-                      const chatHistory: ChatMessage[] = messages
-                        .filter(msg => !msg.text.includes('Merhaba! Ben EatWise AI'))
-                        .map(msg => ({
-                          role: msg.isUser ? 'user' : 'assistant',
-                          content: msg.text,
-                        }));
-
-                      // Yeni kullanıcı mesajını ekle
-                      chatHistory.push({
-                        role: 'user',
-                        content: question,
-                      });
-
-                      // OpenAI API çağrısı yap
-                      const aiResponseText = await AIChatService.sendMessage(chatHistory);
-
-                      const aiResponse: Message = {
-                        id: (Date.now() + 1).toString(),
-                        text: aiResponseText,
-                        isUser: false,
-                        timestamp: new Date(),
-                      };
-                      
-                      setMessages(prev => [...prev, aiResponse]);
-                      setIsTyping(false);
-                    } catch (error) {
-                      console.error('AI Chat hatası:', error);
-                      
-                      // Hata durumunda fallback mesaj
-                      const errorResponse: Message = {
-                        id: (Date.now() + 1).toString(),
-                        text: 'Üzgünüm, şu anda bir teknik sorun yaşıyorum. Lütfen daha sonra tekrar deneyin.',
-                        isUser: false,
-                        timestamp: new Date(),
-                      };
-                      
-                      setMessages(prev => [...prev, errorResponse]);
-                      setIsTyping(false);
-                    }
-                  }}
-                >
-                  <Text style={[styles.quickQuestionText, isDark && styles.textDark]}>
-                    {question}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              <View style={styles.chipsWrapper}>
+                {quickQuestions.map((question, index) => (
+                    <TouchableOpacity
+                    key={index}
+                    style={[styles.chip, isDark && styles.chipDark]}
+                    onPress={() => sendMessage(question)}
+                    >
+                    <Text style={[styles.chipText, isDark && styles.textDark]}>{question}</Text>
+                    </TouchableOpacity>
+                ))}
+              </View>
             </View>
           )}
         </ScrollView>
 
-        {/* Input */}
-        <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
-          <TextInput
-            style={[styles.textInput, isDark && styles.textInputDark]}
-            value={inputText}
-            onChangeText={setInputText}
-            placeholder="Mesajınızı yazın..."
-            placeholderTextColor={isDark ? colors.dark.text.secondary : '#999'}
-            multiline
-            maxLength={500}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              inputText.trim() === '' && styles.sendButtonDisabled,
-            ]}
-            onPress={sendMessage}
-            disabled={inputText.trim() === ''}
-          >
-            <MaterialIcons 
-              name="send" 
-              size={20} 
-              color={inputText.trim() === '' ? '#ccc' : 'white'} 
+        {/* INPUT ALANI */}
+        <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+          <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
+            <TextInput
+              style={[styles.textInput, isDark && styles.textInputDark]}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder="Bir şeyler sor..."
+              placeholderTextColor={isDark ? colors.neutral[500] : colors.neutral[400]}
+              multiline
+              maxLength={500}
             />
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                inputText.trim() === '' && styles.sendButtonDisabled,
+              ]}
+              onPress={() => sendMessage()}
+              disabled={inputText.trim() === ''}
+            >
+               {/* Send butonu Gradient */}
+               {inputText.trim() !== '' ? (
+                   <LinearGradient
+                    colors={['#10B981', '#059669']}
+                    style={styles.sendButtonGradient}
+                   >
+                       <Ionicons name="arrow-up" size={24} color="white" />
+                   </LinearGradient>
+               ) : (
+                   <View style={[styles.sendButtonGradient, { backgroundColor: '#E5E7EB' }]}>
+                       <Ionicons name="arrow-up" size={24} color="#9CA3AF" />
+                   </View>
+               )}
+            </TouchableOpacity>
+          </View>
         </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 };
 
-// Floating Chat Button Component
+// Floating Button (Bu da gradient oldu)
 export const FloatingChatButton: React.FC<{ onPress: () => void }> = ({ onPress }) => {
-  const { isDark } = useTheme();
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePress = () => {
     Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 0.9,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
+      Animated.timing(scaleAnim, { toValue: 0.9, duration: 100, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
     ]).start();
-    
     onPress();
   };
 
   return (
-    <Animated.View style={[styles.floatingButton, { transform: [{ scale: scaleAnim }] }]}>
-      <TouchableOpacity onPress={handlePress} style={styles.floatingButtonInner}>
-        <MaterialIcons name="psychology" size={28} color="white" />
+    <Animated.View style={[styles.floatingButtonContainer, { transform: [{ scale: scaleAnim }] }]}>
+      <TouchableOpacity onPress={handlePress} activeOpacity={0.9}>
+        <LinearGradient
+            colors={['#10B981', '#047857']}
+            style={styles.floatingButtonGradient}
+        >
+             <LottieView
+                source={require('../../assets/animations/robot-welcome.json')}
+                autoPlay
+                loop
+                style={{ width: 40, height: 40 }}
+            />
+        </LinearGradient>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -330,20 +336,23 @@ export const FloatingChatButton: React.FC<{ onPress: () => void }> = ({ onPress 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#F9FAFB', // Daha temiz bir gri
   },
   containerDark: {
     backgroundColor: colors.dark.background,
   },
+  // HEADER STİLLERİ
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20,
-    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 15,
     backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#F3F4F6',
+    ...shadows.sm,
   },
   headerDark: {
     backgroundColor: colors.dark.surface,
@@ -353,124 +362,169 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  aiAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#9C27B0',
+  robotAvatarContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#ECFDF5', // Açık yeşil arka plan
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+    overflow: 'hidden'
+  },
+  headerInfo: {
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
+    color: '#111827',
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  onlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+    marginRight: 6,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#666',
-  },
-  textDark: {
-    color: colors.dark.text.primary,
-  },
-  textSecondaryDark: {
-    color: colors.dark.text.secondary,
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   closeButton: {
-    padding: 8,
+    padding: 4,
   },
+  // MESAJ STİLLERİ
   messagesContainer: {
     flex: 1,
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
-  messageContainer: {
+  messageRow: {
     marginBottom: 16,
-  },
-  userMessage: {
+    flexDirection: 'row',
     alignItems: 'flex-end',
   },
-  aiMessage: {
-    alignItems: 'flex-start',
+  userMessageRow: {
+    justifyContent: 'flex-end',
+  },
+  aiMessageRow: {
+    justifyContent: 'flex-start',
+  },
+  miniAiIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    marginBottom: 4,
   },
   messageBubble: {
     maxWidth: '80%',
-    padding: 16,
+    padding: 14,
     borderRadius: 20,
   },
   userBubble: {
-    backgroundColor: '#9C27B0',
-    borderBottomRightRadius: 8,
+    borderBottomRightRadius: 4,
+    // Renkler Gradient tarafından veriliyor
   },
   aiBubble: {
     backgroundColor: 'white',
-    borderBottomLeftRadius: 8,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
     ...shadows.sm,
   },
   aiBubbleDark: {
     backgroundColor: colors.dark.surface,
-  },
-  messageText: {
-    fontSize: 16,
-    lineHeight: 22,
+    borderColor: colors.dark.border,
   },
   userMessageText: {
     color: 'white',
+    fontSize: 16,
+    lineHeight: 22,
   },
   aiMessageText: {
-    color: '#333',
-  },
-  typingText: {
+    color: '#374151',
     fontSize: 16,
-    color: '#666',
-    fontStyle: 'italic',
+    lineHeight: 22,
   },
+  // QUICK QUESTIONS
   quickQuestionsContainer: {
     marginTop: 20,
+    alignItems: 'center',
   },
   quickQuestionsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: 14,
+    color: '#6B7280',
     marginBottom: 12,
+    fontWeight: '500',
   },
-  quickQuestionButton: {
+  chipsWrapper: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  chip: {
     backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    margin: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     ...shadows.sm,
   },
-  quickQuestionButtonDark: {
+  chipDark: {
     backgroundColor: colors.dark.surface,
+    borderColor: colors.dark.border,
   },
-  quickQuestionText: {
+  chipText: {
+    color: '#4B5563',
     fontSize: 14,
-    color: '#333',
+    fontWeight: '500',
+  },
+  // INPUT ALANI
+  inputWrapper: {
+    padding: 16,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  inputWrapperDark: {
+    backgroundColor: colors.dark.surface,
+    borderTopColor: colors.dark.border,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 20,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
   },
   inputContainerDark: {
-    backgroundColor: colors.dark.surface,
-    borderTopColor: colors.dark.border,
+    // dark styles
   },
   textInput: {
     flex: 1,
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 20,
-    paddingHorizontal: 16,
+    borderColor: '#E5E7EB',
+    borderRadius: 24,
+    paddingHorizontal: 20,
     paddingVertical: 12,
-    marginRight: 12,
+    paddingRight: 40,
+    marginRight: 10,
     maxHeight: 100,
     fontSize: 16,
-    backgroundColor: '#f8f9fa',
+    color: '#1F2937',
   },
   textInputDark: {
     backgroundColor: colors.dark.background,
@@ -478,34 +532,40 @@ const styles = StyleSheet.create({
     color: colors.dark.text.primary,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#9C27B0',
-    alignItems: 'center',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
     justifyContent: 'center',
-    ...shadows.sm,
+    alignItems: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: 'transparent',
   },
-  floatingButton: {
+  sendButtonGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // FLOATING BUTTON
+  floatingButtonContainer: {
     position: 'absolute',
     bottom: 100,
     right: 20,
-    width: 60,
-    height: 60,
     borderRadius: 30,
     ...shadows.lg,
   },
-  floatingButtonInner: {
-    width: '100%',
-    height: '100%',
+  floatingButtonGradient: {
+    width: 60,
+    height: 60,
     borderRadius: 30,
-    backgroundColor: '#9C27B0',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // RENK & THEME HELPERS
+  textDark: { color: colors.dark.text.primary },
+  textSecondaryDark: { color: colors.dark.text.secondary },
 });
 
 export default AIChat;
