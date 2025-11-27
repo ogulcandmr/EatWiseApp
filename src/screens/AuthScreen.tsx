@@ -2,10 +2,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform, Animated, Dimensions } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import LottieView from 'lottie-react-native'; 
 import { AuthService } from '../services/authService';
-import { UserProfile } from '../types/types';
-import { colors, gradients, spacing, borderRadius, shadows } from '../theme';
+import { colors, shadows } from '../theme';
+
+// NOT: npm install lottie-react-native yapılı olmalı.
+// Dosyalar src/assets/animations/ klasöründe olmalı.
 
 type AuthMode = 'login' | 'register';
 
@@ -17,207 +20,178 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Animasyon değerleri
+  // Animasyon Değerleri
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
   const nameInputOpacity = useRef(new Animated.Value(0)).current;
   const nameInputHeight = useRef(new Animated.Value(0)).current;
+  const robotLottieRef = useRef<LottieView>(null);
 
-  // Mode değişikliği animasyonu
+  useEffect(() => {
+      // Robot animasyonunu başlat
+      setTimeout(() => {
+        robotLottieRef.current?.play();
+      }, 100);
+  }, []);
+
   const switchMode = (newMode: AuthMode) => {
-    // Önce küçülme animasyonu
     Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 0.8,
-        duration: 200,
-        useNativeDriver: true,
-      }),
+      Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: 200, useNativeDriver: true }),
     ]).start(() => {
-      // Mode'u değiştir
       setMode(newMode);
-      
-      // Sonra büyüme animasyonu
       Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
       ]).start();
     });
 
-    // Name input animasyonu
     if (newMode === 'register') {
       Animated.parallel([
-        Animated.timing(nameInputOpacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: false,
-        }),
-        Animated.timing(nameInputHeight, {
-          toValue: 80,
-          duration: 300,
-          useNativeDriver: false,
-        }),
+        Animated.timing(nameInputOpacity, { toValue: 1, duration: 300, useNativeDriver: false }),
+        Animated.timing(nameInputHeight, { toValue: 80, duration: 300, useNativeDriver: false }),
       ]).start();
     } else {
       Animated.parallel([
-        Animated.timing(nameInputOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: false,
-        }),
-        Animated.timing(nameInputHeight, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: false,
-        }),
+        Animated.timing(nameInputOpacity, { toValue: 0, duration: 200, useNativeDriver: false }),
+        Animated.timing(nameInputHeight, { toValue: 0, duration: 200, useNativeDriver: false }),
       ]).start();
     }
   };
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
-      return;
-    }
-
+    if (!email || !password) { Alert.alert('Hata', 'Lütfen tüm alanları doldurun'); return; }
     setLoading(true);
     try {
       const user = await AuthService.login(email, password);
       Alert.alert('Başarılı', `Hoş geldin ${user.name}!`);
-      // Burada ana uygulamaya yönlendirme yapılacak
-    } catch (error: any) {
-      Alert.alert('Hata', error.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (error: any) { Alert.alert('Hata', error.message);
+    } finally { setLoading(false); }
   };
 
   const handleRegister = async () => {
-    if (!email || !password || !name) {
-      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Hata', 'Şifre en az 6 karakter olmalı');
-      return;
-    }
-
+    if (!email || !password || !name) { Alert.alert('Hata', 'Lütfen tüm alanları doldurun'); return; }
+    if (password.length < 6) { Alert.alert('Hata', 'Şifre en az 6 karakter olmalı'); return; }
     setLoading(true);
     try {
       const user = await AuthService.register(email, password, name);
       Alert.alert('Başarılı', `Hoş geldin ${user.name}! Hesabın oluşturuldu.`);
       switchMode('login');
-    } catch (error: any) {
-      Alert.alert('Hata', error.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (error: any) { Alert.alert('Hata', error.message);
+    } finally { setLoading(false); }
   };
+
+  // Input Yardımcı Fonksiyonu
+  const renderInput = (
+    label: string,
+    value: string,
+    onChange: (text: string) => void,
+    icon: keyof typeof Ionicons.glyphMap,
+    placeholder: string,
+    isSecure = false,
+    keyboardType: any = 'default',
+    autoCapitalize: any = 'none'
+  ) => (
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <View style={styles.inputContainer}>
+        <Ionicons name={icon} size={20} color={colors.primary[500]} style={styles.inputIcon} />
+        <TextInput
+          style={styles.input}
+          placeholder={placeholder}
+          placeholderTextColor="#999"
+          value={value}
+          onChangeText={onChange}
+          secureTextEntry={isSecure && !showPassword}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+        />
+        {isSecure && (
+          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.passwordToggle}>
+             <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#999" />
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
 
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      {/* Background Gradient */}
+      {/* ORİJİNAL YEŞİL GRADIENT */}
       <LinearGradient
-        colors={['#10B981', '#059669', '#047857'] as any}
+        colors={['#10B981', '#059669', '#047857']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
       
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        
+        {/* HEADER: Robot Animasyonu (Eski ikon yerine) */}
         <View style={styles.header}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoIcon}>🍽️</Text>
+          <View style={styles.robotContainer}>
+            <LottieView
+                ref={robotLottieRef}
+                source={require('../../assets/animations/robot-welcome.json')}
+                autoPlay
+                loop={true}
+                style={styles.robotAnimation}
+            />
           </View>
           <Text style={styles.logoText}>EatWise</Text>
           <Text style={styles.tagline}>AI Destekli Diyet Asistanı</Text>
         </View>
 
+        {/* BEYAZ FORM ALANI (Orijinal Tasarım) */}
         <Animated.View 
           style={[
             styles.formContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ scale: scaleAnim }]
-            }
+            { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }
           ]}
         >
           <Text style={styles.formTitle}>
             {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
           </Text>
 
+          {/* İsim Inputu */}
           <Animated.View 
-            style={[
-              styles.inputGroup,
-              {
-                opacity: nameInputOpacity,
-                height: nameInputHeight,
-                overflow: 'hidden'
-              }
-            ]}
+            style={{
+              opacity: nameInputOpacity,
+              height: nameInputHeight,
+              overflow: 'hidden'
+            }}
           >
-            <Text style={styles.inputLabel}>Ad Soyad</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Adınızı ve soyadınızı girin"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-            />
+             {renderInput('Ad Soyad', name, setName, 'person-outline', 'Adınız Soyadınız', false, 'default', 'words')}
           </Animated.View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>E-posta</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="ornek@email.com"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
+          {/* Email ve Şifre */}
+          {renderInput('E-posta', email, setEmail, 'mail-outline', 'ornek@email.com', false, 'email-address')}
+          {renderInput('Şifre', password, setPassword, 'lock-closed-outline', '••••••', true)}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Şifre</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="En az 6 karakter"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
-
+          {/* Buton: Yüklenirken Robot Dönüyor */}
           <TouchableOpacity
             style={[styles.submitButton, loading && styles.disabledButton]}
             onPress={mode === 'login' ? handleLogin : handleRegister}
             disabled={loading}
+            activeOpacity={0.8}
           >
-            <Text style={styles.submitButtonText}>
-              {loading 
-                ? 'İşleniyor...' 
-                : mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'
-              }
-            </Text>
+            {loading ? (
+               <LottieView
+               source={require('../../assets/animations/robot-loading.json')}
+               autoPlay
+               loop
+               style={styles.loadingAnimation}
+           />
+            ) : (
+              <Text style={styles.submitButtonText}>
+                {mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
+              </Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -233,6 +207,7 @@ export default function AuthScreen() {
           </TouchableOpacity>
         </Animated.View>
 
+        {/* Eski Özellikler Listesi (Olduğu gibi) */}
         <View style={styles.featuresContainer}>
           <Text style={styles.featuresTitle}>Özellikler</Text>
           <View style={styles.featureList}>
@@ -248,18 +223,15 @@ export default function AuthScreen() {
               <Text style={styles.featureIcon}>🧠</Text>
               <Text style={styles.featureText}>Kişisel AI Diyet Planı</Text>
             </View>
-            <View style={styles.featureItem}>
-              <Text style={styles.featureIcon}>📊</Text>
-              <Text style={styles.featureText}>Sağlık Takibi ve Analiz</Text>
-            </View>
           </View>
         </View>
 
         <View style={styles.termsContainer}>
-          <Text style={styles.termsText}>
-            Devam ederek Kullanım Şartları ve Gizlilik Politikası'nı kabul etmiş olursun.
-          </Text>
+            <Text style={styles.termsText}>
+                Devam ederek Kullanım Şartları'nı kabul etmiş olursun.
+            </Text>
         </View>
+
       </ScrollView>
       <StatusBar style="light" />
     </KeyboardAvoidingView>
@@ -280,23 +252,26 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 40,
   },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
+  // Robotun olduğu yuvarlak alan
+  robotContainer: {
+    width: 150,
+    height: 150,
     justifyContent: 'center',
-    marginBottom: 16,
+    alignItems: 'center',
+    marginBottom: 10,
   },
-  logoIcon: {
-    fontSize: 40,
+  robotAnimation: {
+    width: '100%',
+    height: '100%',
   },
   logoText: {
     fontSize: 36,
     fontWeight: '800',
     color: 'white',
     marginBottom: 8,
+    textShadowColor: 'rgba(0,0,0,0.1)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   tagline: {
     fontSize: 16,
@@ -304,12 +279,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
+  // ORİJİNAL BEYAZ FORM KARTI
   formContainer: {
     backgroundColor: 'white',
     borderRadius: 24,
     padding: 24,
     marginBottom: 30,
-    ...shadows.xl,
+    ...shadows.xl, // Tema dosyasındaki gölge
   },
   formTitle: {
     fontSize: 24,
@@ -327,25 +303,44 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginBottom: 8,
   },
-  input: {
+  // INPUT STİLİ: Beyaz arka plan, gri kenarlık (Orijinal Tarz)
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.neutral[50],
     borderWidth: 1,
     borderColor: colors.neutral[200],
     borderRadius: 12,
-    padding: 16,
+    paddingHorizontal: 12,
+    height: 50,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    height: '100%',
     fontSize: 16,
-    backgroundColor: colors.neutral[50],
     color: colors.text.primary,
   },
+  passwordToggle: {
+    padding: 8,
+  },
   submitButton: {
+    height: 52,
     backgroundColor: colors.primary[500],
-    padding: 16,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 8,
     ...shadows.md,
   },
   disabledButton: {
     opacity: 0.6,
+  },
+  loadingAnimation: {
+    width: 50,
+    height: 50,
   },
   submitButtonText: {
     color: 'white',

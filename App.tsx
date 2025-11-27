@@ -16,7 +16,7 @@ import PlanScreen from './src/screens/PlanScreen';
 import RecipesScreen from './src/screens/RecipesScreen';
 import { AuthService } from './src/services/authService';
 import { UserProfile } from './src/types/types';
-import ModernAuthScreen from './src/screens/ModernAuthScreen';
+
 import CameraScreen from './src/screens/CameraScreen';
 import ProfileEditScreen from './src/screens/ProfileEditScreen';
 import TrackingScreen from './src/screens/TrackingScreen';
@@ -164,8 +164,7 @@ function AppContent() {
         return <RecipesScreen />;
       case 'auth':
         return <AuthScreen />;
-      case 'modernAuth':
-        return <ModernAuthScreen />;
+      
       case 'cameraNative':
         return <CameraScreen />;
       case 'profileEdit':
